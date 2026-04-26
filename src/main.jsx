@@ -27,8 +27,13 @@ import {
   Trash2,
   UserRound,
   WalletCards,
+  AlertCircle,
+  CheckCircle,
+  Info,
 } from 'lucide-react';
 import './styles.css';
+import { useToast, ToastContainer } from './hooks/useToast';
+import { validators, sanitize } from './utils/validators';
 
 const currency = new Intl.NumberFormat('id-ID', {
   style: 'currency',
@@ -234,6 +239,7 @@ function App() {
   const [themeId, setThemeId] = useLocalState('pos-theme', 'senja');
   const [syncStatus, setSyncStatus] = useState('Menghubungkan Firebase...');
   const [firebaseApi, setFirebaseApi] = useState(null);
+  const { toasts, addToast, removeToast } = useToast();
   const theme = themes.find((item) => item.id === themeId) || themes[0];
 
   useEffect(() => {
@@ -251,16 +257,27 @@ function App() {
         await api.ensureFirebaseAuth();
         setSyncStatus('Online dengan Firebase');
         await api.seedProductsIfEmpty(seedProducts);
+        
+        // Subscribe to products - always update, even if empty
         unsubProducts = api.subscribeProducts((items) => {
-          if (items.length) setProducts(items);
-        }, () => setSyncStatus('Mode lokal: produk belum tersambung'));
+          setProducts(items.length > 0 ? items : seedProducts);
+        }, (error) => {
+          setSyncStatus('Mode lokal: produk belum tersambung');
+          addToast('Gagal sinkronisasi produk', 'error');
+        });
+        
+        // Subscribe to sales
         unsubSales = api.subscribeSales((items) => {
-          if (items.length) setSales(items);
-        }, () => setSyncStatus('Mode lokal: laporan belum tersambung'));
+          if (items.length > 0) setSales(items);
+        }, (error) => {
+          setSyncStatus('Mode lokal: laporan belum tersambung');
+          addToast('Gagal sinkronisasi laporan', 'error');
+        });
       })
       .catch((error) => {
         const code = error?.code || error?.message || 'Firebase belum bisa diakses';
         setSyncStatus(`Mode lokal: ${code}`);
+        addToast(`Firebase error: ${code}`, 'error');
       });
 
     return () => {
@@ -272,7 +289,10 @@ function App() {
 
   const changeTheme = (nextThemeId) => {
     setThemeId(nextThemeId);
-    firebaseApi?.saveTheme(nextThemeId).catch(() => setSyncStatus('Tema tersimpan lokal, Firebase belum bisa diakses'));
+    firebaseApi?.saveTheme(nextThemeId).catch(() => {
+      setSyncStatus('Tema tersimpan lokal, Firebase belum bisa diakses');
+      addToast('Tema tersimpan lokal', 'info');
+    });
   };
 
   const addHistory = (action, detail, actor = session?.name || 'Sistem') => {
@@ -290,8 +310,9 @@ function App() {
 
   return (
     <main className={`app theme-${theme.id}`}>
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
       {!session ? (
-        <Login users={appUsers} setSession={setSession} />
+        <Login users={appUsers} setSession={setSession} addToast={addToast} />
       ) : session.role === 'admin' ? (
         <BackOffice
           products={products}
@@ -307,6 +328,7 @@ function App() {
           themeId={themeId}
           setThemeId={changeTheme}
           firebaseApi={firebaseApi}
+          addToast={addToast}
         />
       ) : (
         <PosScreen
@@ -317,31 +339,46 @@ function App() {
           setSession={setSession}
           firebaseApi={firebaseApi}
           addHistory={addHistory}
+          addToast={addToast}
         />
       )}
     </main>
   );
 }
 
-function Login({ users, setSession }) {
+function Login({ users, setSession, addToast }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const login = (event) => {
+  const login = async (event) => {
     event.preventDefault();
-    const user = users.find(
-      (item) =>
-        item.username.toLowerCase() === username.trim().toLowerCase() &&
-        item.password === password
-    );
+    setError('');
+    setLoading(true);
 
-    if (!user) {
-      setError('Username atau password belum cocok.');
-      return;
+    try {
+      const user = users.find(
+        (item) =>
+          item.username.toLowerCase() === username.trim().toLowerCase() &&
+          item.password === password
+      );
+
+      if (!user) {
+        setError('Username atau password belum cocok.');
+        addToast('Login gagal: username atau password salah', 'error');
+        setLoading(false);
+        return;
+      }
+
+      setSession({ role: user.role, name: user.name });
+      addToast(`Selamat datang, ${user.name}!`, 'success');
+    } catch (err) {
+      setError('Terjadi kesalahan saat login');
+      addToast('Terjadi kesalahan saat login', 'error');
+    } finally {
+      setLoading(false);
     }
-
-    setSession({ role: user.role, name: user.name });
   };
 
   return (
@@ -371,6 +408,7 @@ function Login({ users, setSession }) {
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 placeholder="admin atau kasir"
+                disabled={loading}
               />
             </span>
           </label>
@@ -384,13 +422,14 @@ function Login({ users, setSession }) {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Masukkan password"
+                disabled={loading}
               />
             </span>
           </label>
           {error && <p className="login-error">{error}</p>}
-          <button className="login-submit" type="submit">
+          <button className="login-submit" type="submit" disabled={loading}>
             <KeyRound />
-            Masuk
+            {loading ? 'Sedang login...' : 'Masuk'}
           </button>
         </form>
       </div>
@@ -414,12 +453,13 @@ function ProductArt({ product, large = false }) {
   );
 }
 
-function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory }) {
+function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
   const [cart, setCart] = useState({});
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [cashReceived, setCashReceived] = useState('');
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   const visibleProducts = products.filter((product) => {
     const matchesType = filter === 'semua' || product.type === filter;
@@ -437,7 +477,10 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
   const total = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
 
   const addItem = (product) => {
-    if (product.stock <= (cart[product.id] || 0)) return;
+    if (product.stock <= (cart[product.id] || 0)) {
+      addToast('Stok tidak cukup', 'warning');
+      return;
+    }
     setCart((current) => ({ ...current, [product.id]: (current[product.id] || 0) + 1 }));
   };
 
@@ -456,32 +499,48 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
 
   const checkout = async () => {
     if (!cartItems.length) return;
-    const sale = {
-      id: `S-${Date.now().toString().slice(-6)}`,
-      date: new Date().toISOString().slice(0, 10),
-      cashier: 'Kasir',
-      total,
-      items: cartItems.reduce((sum, item) => sum + item.qty, 0),
-      payment: 'Tunai',
-      cashReceived: cashNumber,
-      change,
-    };
-    setSales([sale, ...sales]);
-    const nextProducts = products.map((product) => ({
+    
+    setCheckoutLoading(true);
+    try {
+      const sale = {
+        id: `S-${Date.now().toString().slice(-6)}`,
+        date: new Date().toISOString().slice(0, 10),
+        cashier: 'Kasir',
+        total,
+        items: cartItems.reduce((sum, item) => sum + item.qty, 0),
+        payment: 'Tunai',
+        cashReceived: cashNumber,
+        change,
+      };
+      
+      setSales([sale, ...sales]);
+      const nextProducts = products.map((product) => ({
         ...product,
         stock: product.stock - (cart[product.id] || 0),
       }));
-    setProducts(nextProducts);
-    if (firebaseApi) {
-      await Promise.all([
-        firebaseApi.saveSale(sale),
-        ...cartItems.map((item) => firebaseApi.updateProductStock(item.id, item.stock - item.qty)),
-      ]).catch(() => {});
+      setProducts(nextProducts);
+      
+      if (firebaseApi) {
+        try {
+          await Promise.all([
+            firebaseApi.saveSale(sale),
+            ...cartItems.map((item) => firebaseApi.updateProductStock(item.id, item.stock - item.qty)),
+          ]);
+          addToast('Transaksi berhasil disimpan', 'success');
+        } catch (error) {
+          addToast('Transaksi tersimpan lokal, gagal sinkronisasi Firebase', 'warning');
+        }
+      }
+      
+      setCart({});
+      setPaymentOpen(false);
+      setCashReceived('');
+      addHistory?.('Transaksi baru', `${sale.id} dibuat dengan total ${currency.format(total)}.`);
+    } catch (error) {
+      addToast('Gagal memproses transaksi', 'error');
+    } finally {
+      setCheckoutLoading(false);
     }
-    setCart({});
-    setPaymentOpen(false);
-    setCashReceived('');
-    addHistory?.('Transaksi baru', `${sale.id} dibuat dengan total ${currency.format(total)}.`);
   };
 
   return (
@@ -597,9 +656,9 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
               <strong>{cashNumber < total ? currency.format(total - cashNumber) : currency.format(change)}</strong>
               {canFinishPayment && change > 0 && <small>Serahkan kembalian ke pembeli, lalu tekan selesai.</small>}
             </div>
-            <button className="checkout-button" onClick={checkout} disabled={!canFinishPayment}>
+            <button className="checkout-button" onClick={checkout} disabled={!canFinishPayment || checkoutLoading}>
               <ReceiptText />
-              {change > 0 ? 'Selesai, kembalian sudah diserahkan' : 'Selesaikan transaksi'}
+              {checkoutLoading ? 'Memproses...' : change > 0 ? 'Selesai, kembalian sudah diserahkan' : 'Selesaikan transaksi'}
             </button>
           </div>
         </div>
@@ -620,6 +679,7 @@ function BackOffice({
   setHistoryLog,
   addHistory,
   firebaseApi,
+  addToast,
 }) {
   const [view, setView] = useState('dashboard');
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
@@ -756,9 +816,9 @@ function BackOffice({
           </>
         )}
 
-        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} />}
+        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} />}
         {view === 'reports' && <ReportsPro sales={sales} products={products} />}
-        {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} />}
+        {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} />}
         {view === 'history' && <HistoryPage historyLog={historyLog} />}
         {view === 'settings' && (
           <SettingsPage
@@ -768,6 +828,7 @@ function BackOffice({
             setSales={setSales}
             setHistoryLog={setHistoryLog}
             addHistory={addHistory}
+            addToast={addToast}
           />
         )}
       </main>
@@ -786,43 +847,103 @@ function Metric({ icon, label, value, hint }) {
   );
 }
 
-function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
+function ProductManager({ products, setProducts, firebaseApi, addHistory, addToast }) {
   const emptyForm = { name: '', type: 'layang', price: '', stock: '', minStock: 10, desc: '', image: '', color: '#0f766e' };
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!form.name || !form.price) return;
+    setFormError('');
+
+    // Validation
+    const nameError = validators.productName(form.name);
+    if (nameError) {
+      setFormError(nameError);
+      addToast(nameError, 'error');
+      return;
+    }
+
+    const priceError = validators.price(form.price);
+    if (priceError) {
+      setFormError(priceError);
+      addToast(priceError, 'error');
+      return;
+    }
+
+    const stockError = validators.stock(form.stock);
+    if (stockError) {
+      setFormError(stockError);
+      addToast(stockError, 'error');
+      return;
+    }
+
+    const minStockError = validators.minStock(form.minStock);
+    if (minStockError) {
+      setFormError(minStockError);
+      addToast(minStockError, 'error');
+      return;
+    }
+
     setSaving(true);
-    const product = {
+    try {
+      const product = {
         ...form,
+        name: sanitize.text(form.name),
         id: editingId || `${form.type}-${Date.now()}`,
-        price: Number(form.price),
-        stock: Number(form.stock || 0),
-        minStock: Number(form.minStock || 10),
+        price: sanitize.positiveNumber(form.price),
+        stock: sanitize.number(form.stock),
+        minStock: sanitize.number(form.minStock),
       };
-    setProducts((current) => editingId
-      ? current.map((item) => (item.id === editingId ? product : item))
-      : [product, ...current]
-    );
-    await firebaseApi?.saveProduct(product).catch(() => {});
-    addHistory?.(editingId ? 'Produk diedit' : 'Produk baru', `${product.name} ${editingId ? 'diperbarui' : 'ditambahkan'} dengan stok ${product.stock}.`);
-    setForm(emptyForm);
-    setEditingId('');
-    setSaving(false);
+      
+      setProducts((current) => editingId
+        ? current.map((item) => (item.id === editingId ? product : item))
+        : [product, ...current]
+      );
+      
+      try {
+        await firebaseApi?.saveProduct(product);
+        addToast(editingId ? 'Produk berhasil diperbarui' : 'Produk berhasil ditambahkan', 'success');
+      } catch (error) {
+        addToast('Produk tersimpan lokal, gagal sinkronisasi Firebase', 'warning');
+      }
+      
+      addHistory?.(editingId ? 'Produk diedit' : 'Produk baru', `${product.name} ${editingId ? 'diperbarui' : 'ditambahkan'} dengan stok ${product.stock}.`);
+      setForm(emptyForm);
+      setEditingId('');
+    } catch (error) {
+      addToast('Gagal menyimpan produk', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const uploadImage = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    
+    // Validate file
+    if (!file.type.startsWith('image/')) {
+      addToast('File harus berupa gambar', 'error');
+      return;
+    }
+    
+    if (file.size > 3 * 1024 * 1024) {
+      addToast('Ukuran gambar maksimal 3MB', 'error');
+      return;
+    }
+    
     setSaving(true);
     try {
       const imageUrl = firebaseApi ? await firebaseApi.uploadProductImage(file) : '';
       if (!imageUrl) throw new Error('Firebase Storage belum siap');
       setForm((current) => ({ ...current, image: imageUrl }));
-    } catch {
+      addToast('Gambar berhasil diupload', 'success');
+    } catch (error) {
+      addToast('Gagal upload gambar ke Firebase, gunakan lokal', 'warning');
+      // Fallback to local storage only if Firebase fails
       const reader = new FileReader();
       reader.onload = () => setForm((current) => ({ ...current, image: reader.result }));
       reader.readAsDataURL(file);
@@ -834,8 +955,14 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
   const deleteProduct = (id) => {
     const deletedProduct = products.find((item) => item.id === id);
     if (!window.confirm(`Hapus produk ${deletedProduct?.name || id}?`)) return;
+    
     setProducts(products.filter((product) => product.id !== id));
-    firebaseApi?.removeProduct(id).catch(() => {});
+    try {
+      firebaseApi?.removeProduct(id);
+      addToast('Produk berhasil dihapus', 'success');
+    } catch (error) {
+      addToast('Produk dihapus lokal, gagal sinkronisasi Firebase', 'warning');
+    }
     addHistory?.('Produk dihapus', `${deletedProduct?.name || id} dihapus dari daftar barang.`);
   };
 
@@ -856,6 +983,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
   const cancelEdit = () => {
     setEditingId('');
     setForm(emptyForm);
+    setFormError('');
   };
 
   return (
@@ -882,15 +1010,15 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
           </label>
           <label>
             Harga
-            <input type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} placeholder="12000" />
+            <input type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} placeholder="12000" min="0" />
           </label>
           <label>
             Stok
-            <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} placeholder="20" />
+            <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} placeholder="20" min="0" />
           </label>
           <label>
             Minimal stok
-            <input type="number" value={form.minStock} onChange={(event) => setForm({ ...form, minStock: event.target.value })} placeholder="10" />
+            <input type="number" value={form.minStock} onChange={(event) => setForm({ ...form, minStock: event.target.value })} placeholder="10" min="0" />
           </label>
           <label>
             Catatan
@@ -901,6 +1029,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
             <input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} />
           </label>
         </div>
+        {formError && <p className="form-error">{formError}</p>}
         <label className="upload-box">
           <ImagePlus />
           <span>{form.image ? 'Gambar sudah dipilih' : saving ? 'Mengunggah...' : 'Upload gambar produk'}</span>
@@ -945,9 +1074,10 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
   );
 }
 
-function TransactionManager({ sales, setSales, firebaseApi, addHistory }) {
+function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast }) {
   const emptyForm = { id: '', date: '', cashier: '', items: '', total: '', cashReceived: '', change: '' };
   const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
   const editSale = (sale) => {
     setForm({
@@ -964,28 +1094,59 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory }) {
   const saveEdit = async (event) => {
     event.preventDefault();
     if (!form.id) return;
-    const updatedSale = {
-      ...sales.find((sale) => sale.id === form.id),
-      id: form.id,
-      date: form.date,
-      cashier: form.cashier || 'Admin',
-      items: Number(form.items || 0),
-      total: Number(form.total || 0),
-      payment: 'Tunai',
-      cashReceived: Number(form.cashReceived || form.total || 0),
-      change: Number(form.change || 0),
-    };
-    setSales((current) => current.map((sale) => (sale.id === form.id ? updatedSale : sale)));
-    await firebaseApi?.saveSale(updatedSale).catch(() => {});
-    addHistory?.('Transaksi diedit', `${updatedSale.id} diperbarui menjadi ${currency.format(updatedSale.total)}.`);
-    setForm(emptyForm);
+    
+    setSaving(true);
+    try {
+      const updatedSale = {
+        ...sales.find((sale) => sale.id === form.id),
+        id: form.id,
+        date: form.date,
+        cashier: form.cashier || 'Admin',
+        items: Number(form.items || 0),
+        total: Number(form.total || 0),
+        payment: 'Tunai',
+        cashReceived: Number(form.cashReceived || form.total || 0),
+        change: Number(form.change || 0),
+      };
+      
+      setSales((current) => current.map((sale) => (sale.id === form.id ? updatedSale : sale)));
+      
+      try {
+        await firebaseApi?.saveSale(updatedSale);
+        addToast('Transaksi berhasil diperbarui', 'success');
+      } catch (error) {
+        addToast('Transaksi diperbarui lokal, gagal sinkronisasi Firebase', 'warning');
+      }
+      
+      addHistory?.('Transaksi diedit', `${updatedSale.id} diperbarui menjadi ${currency.format(updatedSale.total)}.`);
+      setForm(emptyForm);
+    } catch (error) {
+      addToast('Gagal memperbarui transaksi', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const deleteSale = async (sale) => {
     if (!window.confirm(`Hapus transaksi ${sale.id}?`)) return;
-    setSales((current) => current.filter((item) => item.id !== sale.id));
-    await firebaseApi?.removeSale?.(sale.id).catch(() => {});
-    addHistory?.('Transaksi dihapus', `${sale.id} dengan total ${currency.format(sale.total)} dihapus.`);
+    
+    setSaving(true);
+    try {
+      setSales((current) => current.filter((item) => item.id !== sale.id));
+      
+      try {
+        await firebaseApi?.removeSale?.(sale.id);
+        addToast('Transaksi berhasil dihapus', 'success');
+      } catch (error) {
+        addToast('Transaksi dihapus lokal, gagal sinkronisasi Firebase', 'warning');
+      }
+      
+      addHistory?.('Transaksi dihapus', `${sale.id} dengan total ${currency.format(sale.total)} dihapus.`);
+    } catch (error) {
+      addToast('Gagal menghapus transaksi', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1023,7 +1184,7 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory }) {
             Kembalian
             <input type="number" value={form.change} onChange={(event) => setForm({ ...form, change: event.target.value })} disabled={!form.id} />
           </label>
-          <button className="primary-button" type="submit" disabled={!form.id}>Simpan perubahan</button>
+          <button className="primary-button" type="submit" disabled={!form.id || saving}>Simpan perubahan</button>
         </form>
       </section>
 
@@ -1084,46 +1245,74 @@ function HistoryPage({ historyLog }) {
   );
 }
 
-function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHistoryLog, addHistory }) {
+function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHistoryLog, addHistory, addToast }) {
   const [forms, setForms] = useState(() =>
     authUsers.reduce((acc, user) => ({ ...acc, [user.username]: { password: user.password, confirm: user.password } }), {})
   );
   const [message, setMessage] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState({});
   const [resetPassword, setResetPassword] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const savePassword = (username) => {
     const next = forms[username];
     if (!next?.password || next.password !== next.confirm) {
       setMessage('Password dan konfirmasi harus sama.');
+      addToast('Password dan konfirmasi harus sama', 'error');
       return;
     }
-    setUsers((current) => current.map((user) => (user.username === username ? { ...user, password: next.password } : user)));
-    addHistory?.('Password diubah', `Password akun ${username} diperbarui.`);
-    setMessage(`Password ${username} berhasil diperbarui.`);
+    
+    const passwordError = validators.password(next.password);
+    if (passwordError) {
+      setMessage(passwordError);
+      addToast(passwordError, 'error');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      setUsers((current) => current.map((user) => (user.username === username ? { ...user, password: next.password } : user)));
+      addHistory?.('Password diubah', `Password akun ${username} diperbarui.`);
+      setMessage(`Password ${username} berhasil diperbarui.`);
+      addToast(`Password ${username} berhasil diperbarui`, 'success');
+    } catch (error) {
+      addToast('Gagal mengubah password', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const resetAllData = () => {
     const admin = authUsers.find((user) => user.username === 'admin');
     if (!resetPassword || resetPassword !== admin?.password) {
       setMessage('Password admin tidak sesuai. Reset dibatalkan.');
+      addToast('Password admin tidak sesuai', 'error');
       return;
     }
     if (!window.confirm('Reset semua data transaksi, produk, history, dan password ke awal?')) return;
-    setProducts(seedProducts);
-    setSales([]);
-    setUsers(users);
-    setHistoryLog([
-      {
-        id: `H-${Date.now().toString().slice(-6)}`,
-        time: nowStamp(),
-        actor: 'Admin',
-        action: 'Reset data',
-        detail: 'Semua data lokal aplikasi dikembalikan ke kondisi awal.',
-      },
-    ]);
-    setResetPassword('');
-    setMessage('Data aplikasi berhasil direset.');
+    
+    setSaving(true);
+    try {
+      setProducts(seedProducts);
+      setSales([]);
+      setUsers(users);
+      setHistoryLog([
+        {
+          id: `H-${Date.now().toString().slice(-6)}`,
+          time: nowStamp(),
+          actor: 'Admin',
+          action: 'Reset data',
+          detail: 'Semua data lokal aplikasi dikembalikan ke kondisi awal.',
+        },
+      ]);
+      setResetPassword('');
+      setMessage('Data aplikasi berhasil direset.');
+      addToast('Data aplikasi berhasil direset', 'success');
+    } catch (error) {
+      addToast('Gagal mereset data', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1174,7 +1363,7 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
                 </button>
               </span>
             </label>
-            <button className="primary-button" onClick={() => savePassword(user.username)}>Simpan password</button>
+            <button className="primary-button" onClick={() => savePassword(user.username)} disabled={saving}>Simpan password</button>
           </div>
         ))}
       </div>
@@ -1198,7 +1387,7 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
             </button>
           </span>
         </label>
-        <button className="danger-button" onClick={resetAllData}>Reset semua data</button>
+        <button className="danger-button" onClick={resetAllData} disabled={saving}>Reset semua data</button>
       </div>
     </section>
   );

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -17,13 +17,13 @@ import {
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyA5fJZs56GNEzS7GXJee28TRVbe90_UcyQ',
-  authDomain: 'layangan-caa6c.firebaseapp.com',
-  projectId: 'layangan-caa6c',
-  storageBucket: 'layangan-caa6c.firebasestorage.app',
-  messagingSenderId: '187969086899',
-  appId: '1:187969086899:web:b0949bbf8603214dfc97c6',
-  measurementId: 'G-7XK5TYGZ6C',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
@@ -39,11 +39,23 @@ isSupported()
 
 export async function ensureFirebaseAuth() {
   if (auth.currentUser) return auth.currentUser;
+  return null;
+}
+
+export async function loginWithEmail(email, password) {
   try {
-    const credential = await signInAnonymously(auth);
-    return credential.user;
-  } catch {
-    return null;
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
+  } catch (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function logout() {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    throw new Error(error.message);
   }
 }
 

@@ -2,16 +2,41 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to get user role
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Users collection - only admins can read/write
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId || getUserRole() == 'admin';
+      allow write: if request.auth.uid == userId || getUserRole() == 'admin';
+    }
+
+    // Products - everyone can read, only admins can write
     match /products/{productId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && getUserRole() == 'admin';
     }
 
+    // Sales - everyone can read, admins and cashiers can create, only admins can update/delete
     match /sales/{saleId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && (getUserRole() == 'admin' || getUserRole() == 'cashier');
+      allow update, delete: if request.auth != null && getUserRole() == 'admin';
     }
 
+    // Settings - only admins can read/write
     match /settings/{settingId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if request.auth != null && getUserRole() == 'admin';
+    }
+
+    // Audit logs - everyone can read their own, admins can read all
+    match /auditLogs/{logId} {
+      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || getUserRole() == 'admin');
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && getUserRole() == 'admin';
     }
   }
 }
+
