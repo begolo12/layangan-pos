@@ -9,6 +9,8 @@ import {
   Download,
   History,
   ImagePlus,
+  Eye,
+  EyeOff,
   KeyRound,
   LayoutDashboard,
   LockKeyhole,
@@ -281,7 +283,7 @@ function App() {
   return (
     <main className={`app theme-${theme.id}`}>
       {!session ? (
-        <Login users={appUsers} setSession={setSession} syncStatus={syncStatus} />
+        <Login users={appUsers} setSession={setSession} />
       ) : session.role === 'admin' ? (
         <BackOffice
           products={products}
@@ -295,7 +297,6 @@ function App() {
           addHistory={addHistory}
           themeId={themeId}
           setThemeId={changeTheme}
-          syncStatus={syncStatus}
           firebaseApi={firebaseApi}
         />
       ) : (
@@ -305,7 +306,6 @@ function App() {
           sales={sales}
           setSales={setSales}
           setSession={setSession}
-          syncStatus={syncStatus}
           firebaseApi={firebaseApi}
           addHistory={addHistory}
         />
@@ -314,7 +314,7 @@ function App() {
   );
 }
 
-function Login({ users, setSession, syncStatus }) {
+function Login({ users, setSession }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -384,7 +384,6 @@ function Login({ users, setSession, syncStatus }) {
             Masuk
           </button>
         </form>
-        <p className="sync-pill">{syncStatus}</p>
       </div>
     </section>
   );
@@ -406,7 +405,7 @@ function ProductArt({ product, large = false }) {
   );
 }
 
-function PosScreen({ products, setProducts, sales, setSales, setSession, syncStatus, firebaseApi, addHistory }) {
+function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
   const [cart, setCart] = useState({});
@@ -482,7 +481,6 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
         <div>
           <p className="eyebrow">Mode kasir</p>
           <h1>POS Layang Layar</h1>
-          <small className="sync-text">{syncStatus}</small>
         </div>
         <button className="icon-button" aria-label="Keluar" onClick={() => setSession(null)}>
           <LogOut />
@@ -611,7 +609,6 @@ function BackOffice({
   setAppUsers,
   historyLog,
   addHistory,
-  syncStatus,
   firebaseApi,
 }) {
   const [view, setView] = useState('dashboard');
@@ -669,14 +666,13 @@ function BackOffice({
           <div>
             <p className="eyebrow">Admin</p>
             <h1>{view === 'dashboard' ? 'Dashboard' : view === 'products' ? 'Produk & Stok' : view === 'reports' ? 'Laporan' : view === 'transactions' ? 'Transaksi' : view === 'history' ? 'History' : 'Setting'}</h1>
-            <small className="sync-text">{syncStatus}</small>
           </div>
           <div className="user-chip">
             <UserRound size={18} /> Admin
           </div>
         </header>
 
-        <div className="admin-tabs">
+        <div className="admin-mobile-nav">
           <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
           <button className={view === 'products' ? 'active' : ''} onClick={() => setView('products')}>Produk</button>
           <button className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}>Laporan</button>
@@ -1067,6 +1063,7 @@ function SettingsPage({ users, setUsers, addHistory }) {
     users.reduce((acc, user) => ({ ...acc, [user.username]: { password: user.password, confirm: user.password } }), {})
   );
   const [message, setMessage] = useState('');
+  const [visiblePasswords, setVisiblePasswords] = useState({});
 
   const savePassword = (username) => {
     const next = forms[username];
@@ -1095,19 +1092,37 @@ function SettingsPage({ users, setUsers, addHistory }) {
             <small>Username: {user.username}</small>
             <label>
               Password baru
-              <input
-                type="password"
-                value={forms[user.username]?.password || ''}
-                onChange={(event) => setForms({ ...forms, [user.username]: { ...forms[user.username], password: event.target.value } })}
-              />
+              <span className="password-field">
+                <input
+                  type={visiblePasswords[`${user.username}-password`] ? 'text' : 'password'}
+                  value={forms[user.username]?.password || ''}
+                  onChange={(event) => setForms({ ...forms, [user.username]: { ...forms[user.username], password: event.target.value } })}
+                />
+                <button
+                  type="button"
+                  aria-label="Lihat password"
+                  onClick={() => setVisiblePasswords({ ...visiblePasswords, [`${user.username}-password`]: !visiblePasswords[`${user.username}-password`] })}
+                >
+                  {visiblePasswords[`${user.username}-password`] ? <EyeOff /> : <Eye />}
+                </button>
+              </span>
             </label>
             <label>
               Konfirmasi
-              <input
-                type="password"
-                value={forms[user.username]?.confirm || ''}
-                onChange={(event) => setForms({ ...forms, [user.username]: { ...forms[user.username], confirm: event.target.value } })}
-              />
+              <span className="password-field">
+                <input
+                  type={visiblePasswords[`${user.username}-confirm`] ? 'text' : 'password'}
+                  value={forms[user.username]?.confirm || ''}
+                  onChange={(event) => setForms({ ...forms, [user.username]: { ...forms[user.username], confirm: event.target.value } })}
+                />
+                <button
+                  type="button"
+                  aria-label="Lihat konfirmasi password"
+                  onClick={() => setVisiblePasswords({ ...visiblePasswords, [`${user.username}-confirm`]: !visiblePasswords[`${user.username}-confirm`] })}
+                >
+                  {visiblePasswords[`${user.username}-confirm`] ? <EyeOff /> : <Eye />}
+                </button>
+              </span>
             </label>
             <button className="primary-button" onClick={() => savePassword(user.username)}>Simpan password</button>
           </div>
