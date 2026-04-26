@@ -70,6 +70,7 @@ const seedProducts = [
     type: 'layang',
     price: 12000,
     stock: 36,
+    minStock: 10,
     image: '',
     color: '#0f766e',
     desc: 'Bambu ringan, kertas kuat',
@@ -80,6 +81,7 @@ const seedProducts = [
     type: 'layang',
     price: 8000,
     stock: 48,
+    minStock: 10,
     image: '',
     color: '#2563eb',
     desc: 'Motif ramai, cocok paket hemat',
@@ -90,6 +92,7 @@ const seedProducts = [
     type: 'benang',
     price: 15000,
     stock: 18,
+    minStock: 8,
     image: '',
     color: '#c2410c',
     desc: 'Ukuran kecil, cepat laku',
@@ -100,6 +103,7 @@ const seedProducts = [
     type: 'benang',
     price: 10000,
     stock: 25,
+    minStock: 8,
     image: '',
     color: '#7c3aed',
     desc: 'Aman untuk pemula',
@@ -178,6 +182,10 @@ function filterSalesByPeriod(sales, period) {
     const date = toDate(sale.date);
     return date >= start && date <= end;
   });
+}
+
+function isLowStock(product) {
+  return Number(product.stock || 0) <= Number(product.minStock || 10);
 }
 
 function getPeriodLabel(period) {
@@ -294,6 +302,7 @@ function App() {
           appUsers={appUsers}
           setAppUsers={setAppUsers}
           historyLog={historyLog}
+          setHistoryLog={setHistoryLog}
           addHistory={addHistory}
           themeId={themeId}
           setThemeId={changeTheme}
@@ -608,12 +617,13 @@ function BackOffice({
   appUsers,
   setAppUsers,
   historyLog,
+  setHistoryLog,
   addHistory,
   firebaseApi,
 }) {
   const [view, setView] = useState('dashboard');
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
-  const lowStock = products.filter((product) => product.stock <= 10);
+  const lowStock = products.filter(isLowStock);
   const totalStock = products.reduce((sum, product) => sum + product.stock, 0);
   const todaySales = filterSalesByPeriod(sales, 'daily');
   const weeklySales = filterSalesByPeriod(sales, 'weekly');
@@ -750,7 +760,16 @@ function BackOffice({
         {view === 'reports' && <ReportsPro sales={sales} products={products} />}
         {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} />}
         {view === 'history' && <HistoryPage historyLog={historyLog} />}
-        {view === 'settings' && <SettingsPage users={appUsers} setUsers={setAppUsers} addHistory={addHistory} />}
+        {view === 'settings' && (
+          <SettingsPage
+            users={appUsers}
+            setUsers={setAppUsers}
+            setProducts={setProducts}
+            setSales={setSales}
+            setHistoryLog={setHistoryLog}
+            addHistory={addHistory}
+          />
+        )}
       </main>
     </section>
   );
@@ -768,7 +787,7 @@ function Metric({ icon, label, value, hint }) {
 }
 
 function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
-  const emptyForm = { name: '', type: 'layang', price: '', stock: '', desc: '', image: '', color: '#0f766e' };
+  const emptyForm = { name: '', type: 'layang', price: '', stock: '', minStock: 10, desc: '', image: '', color: '#0f766e' };
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState('');
   const [saving, setSaving] = useState(false);
@@ -782,6 +801,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
         id: editingId || `${form.type}-${Date.now()}`,
         price: Number(form.price),
         stock: Number(form.stock || 0),
+        minStock: Number(form.minStock || 10),
       };
     setProducts((current) => editingId
       ? current.map((item) => (item.id === editingId ? product : item))
@@ -826,6 +846,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
       type: product.type,
       price: product.price,
       stock: product.stock,
+      minStock: product.minStock || 10,
       desc: product.desc || '',
       image: product.image || '',
       color: product.color || '#0f766e',
@@ -868,6 +889,10 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
             <input type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} placeholder="20" />
           </label>
           <label>
+            Minimal stok
+            <input type="number" value={form.minStock} onChange={(event) => setForm({ ...form, minStock: event.target.value })} placeholder="10" />
+          </label>
+          <label>
             Catatan
             <input value={form.desc} onChange={(event) => setForm({ ...form, desc: event.target.value })} placeholder="Motif / ukuran / kualitas" />
           </label>
@@ -897,14 +922,15 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
         </div>
         <div className="product-stock-list">
           {products.map((product) => (
-            <div className="stock-card" key={product.id}>
+            <div className={`stock-card ${isLowStock(product) ? 'low-stock' : ''}`} key={product.id}>
               <ProductArt product={product} large />
               <span>
                 <strong>{product.name}</strong>
                 <small>{product.type} • {currency.format(product.price)} • stok {product.stock}</small>
               </span>
               <b>{currency.format(product.price)}</b>
-              <em>Stok {product.stock}</em>
+              <em>Stok {product.stock} / min {product.minStock || 10}</em>
+              {isLowStock(product) && <i>Stok menipis</i>}
               <div className="row-actions">
                 <button className="secondary-button" type="button" onClick={() => editProduct(product)}>Edit</button>
                 <button className="icon-button danger" aria-label="Hapus produk" onClick={() => deleteProduct(product.id)}>
@@ -1058,12 +1084,13 @@ function HistoryPage({ historyLog }) {
   );
 }
 
-function SettingsPage({ users, setUsers, addHistory }) {
+function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHistoryLog, addHistory }) {
   const [forms, setForms] = useState(() =>
-    users.reduce((acc, user) => ({ ...acc, [user.username]: { password: user.password, confirm: user.password } }), {})
+    authUsers.reduce((acc, user) => ({ ...acc, [user.username]: { password: user.password, confirm: user.password } }), {})
   );
   const [message, setMessage] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState({});
+  const [resetPassword, setResetPassword] = useState('');
 
   const savePassword = (username) => {
     const next = forms[username];
@@ -1076,6 +1103,29 @@ function SettingsPage({ users, setUsers, addHistory }) {
     setMessage(`Password ${username} berhasil diperbarui.`);
   };
 
+  const resetAllData = () => {
+    const admin = authUsers.find((user) => user.username === 'admin');
+    if (!resetPassword || resetPassword !== admin?.password) {
+      setMessage('Password admin tidak sesuai. Reset dibatalkan.');
+      return;
+    }
+    if (!window.confirm('Reset semua data transaksi, produk, history, dan password ke awal?')) return;
+    setProducts(seedProducts);
+    setSales([]);
+    setUsers(users);
+    setHistoryLog([
+      {
+        id: `H-${Date.now().toString().slice(-6)}`,
+        time: nowStamp(),
+        actor: 'Admin',
+        action: 'Reset data',
+        detail: 'Semua data lokal aplikasi dikembalikan ke kondisi awal.',
+      },
+    ]);
+    setResetPassword('');
+    setMessage('Data aplikasi berhasil direset.');
+  };
+
   return (
     <section className="office-section">
       <div className="section-title">
@@ -1086,7 +1136,7 @@ function SettingsPage({ users, setUsers, addHistory }) {
       </div>
       {message && <p className="login-error">{message}</p>}
       <div className="settings-grid">
-        {users.map((user) => (
+        {authUsers.map((user) => (
           <div className="settings-card" key={user.username}>
             <strong>{user.title}</strong>
             <small>Username: {user.username}</small>
@@ -1128,6 +1178,28 @@ function SettingsPage({ users, setUsers, addHistory }) {
           </div>
         ))}
       </div>
+      <div className="danger-zone">
+        <div>
+          <p className="eyebrow">Reset aplikasi</p>
+          <h2>Reset keseluruhan data</h2>
+          <small>Menghapus transaksi, history, dan mengembalikan produk ke data awal. Butuh password admin.</small>
+        </div>
+        <label>
+          Password admin
+          <span className="password-field">
+            <input
+              type={visiblePasswords.reset ? 'text' : 'password'}
+              value={resetPassword}
+              onChange={(event) => setResetPassword(event.target.value)}
+              placeholder="Masukkan password admin"
+            />
+            <button type="button" aria-label="Lihat password reset" onClick={() => setVisiblePasswords({ ...visiblePasswords, reset: !visiblePasswords.reset })}>
+              {visiblePasswords.reset ? <EyeOff /> : <Eye />}
+            </button>
+          </span>
+        </label>
+        <button className="danger-button" onClick={resetAllData}>Reset semua data</button>
+      </div>
     </section>
   );
 }
@@ -1140,8 +1212,17 @@ function ReportsPro({ sales, products }) {
   const average = filteredSales.length ? Math.round(total / filteredSales.length) : 0;
   const cashIn = filteredSales.reduce((sum, sale) => sum + (sale.cashReceived || sale.total), 0);
   const changeOut = filteredSales.reduce((sum, sale) => sum + (sale.change || 0), 0);
-  const lowStock = products.filter((product) => product.stock <= 15);
+  const lowStock = products.filter(isLowStock);
   const { start, end } = getPeriodRange(period);
+  const chartRows = useMemo(() => {
+    const grouped = filteredSales.reduce((acc, sale) => {
+      acc[sale.date] = (acc[sale.date] || 0) + sale.total;
+      return acc;
+    }, {});
+    const rows = Object.entries(grouped).slice(-7);
+    const max = Math.max(...rows.map(([, value]) => value), 1);
+    return rows.map(([date, value]) => ({ date, value, width: `${Math.max(8, (value / max) * 100)}%` }));
+  }, [filteredSales]);
 
   const exportCsv = () => {
     const rows = ['ID,Tanggal,Kasir,Item,Pembayaran,Uang Diterima,Kembalian,Total'];
@@ -1188,6 +1269,22 @@ function ReportsPro({ sales, products }) {
           <Metric icon={<WalletCards />} label="Uang masuk bersih" value={currency.format(cashIn - changeOut)} hint={`Kembalian ${currency.format(changeOut)}`} />
         </div>
 
+        <div className="report-chart no-print">
+          <div className="section-title">
+            <h2>Grafik omzet</h2>
+            <small>{chartRows.length ? 'Per tanggal transaksi' : 'Belum ada data'}</small>
+          </div>
+          <div className="bar-list">
+            {chartRows.map((row) => (
+              <div className="bar-row" key={row.date}>
+                <span>{row.date.slice(5)}</span>
+                <i><b style={{ width: row.width }} /></i>
+                <strong>{currency.format(row.value)}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="sales-table">
           {filteredSales.length === 0 && <p className="empty">Belum ada transaksi pada periode ini.</p>}
           {filteredSales.map((sale) => (
@@ -1207,7 +1304,10 @@ function ReportsPro({ sales, products }) {
       </section>
 
       <section className="office-section no-print">
-        <h2>Kontrol stok</h2>
+        <div className="section-title">
+          <h2>Stok menipis</h2>
+          <small>{lowStock.length} produk</small>
+        </div>
         <div className="inventory-list compact">
           {lowStock.length === 0 && <p className="empty">Semua stok masih aman.</p>}
           {lowStock.map((product) => (
