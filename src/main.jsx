@@ -35,6 +35,7 @@ import './styles.css';
 import { useToast, ToastContainer } from './hooks/useToast';
 import { useConfirmDialog, ConfirmDialog } from './hooks/useConfirmDialog';
 import { validators, sanitize } from './utils/validators';
+import { testFirebaseConnection } from './utils/firebaseTest';
 
 const currency = new Intl.NumberFormat('id-ID', {
   style: 'currency',
@@ -247,6 +248,12 @@ function App() {
   useEffect(() => {
     if (themeId !== 'senja') setThemeId('senja');
   }, [themeId]);
+
+  // Make test function available in console
+  useEffect(() => {
+    window.testFirebaseConnection = testFirebaseConnection;
+    console.log('💡 Tip: Run testFirebaseConnection() in console to test Firebase connection');
+  }, []);
 
   useEffect(() => {
     let unsubProducts = () => {};
