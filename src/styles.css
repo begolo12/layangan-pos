@@ -565,6 +565,31 @@ h2 {
   width: 18px;
 }
 
+.cash-only-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: white;
+}
+
+.cash-only-row svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.cash-only-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.cash-only-row small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .total-box {
   display: flex;
   align-items: center;
@@ -598,6 +623,56 @@ h2 {
   color: var(--primary);
   border: 1px solid var(--line);
   background: white;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(28, 20, 14, 0.42);
+}
+
+.payment-modal {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 460px);
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: white;
+  box-shadow: 0 28px 80px rgba(42, 24, 12, 0.24);
+}
+
+.payment-total,
+.change-box {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--soft);
+}
+
+.payment-total span,
+.change-box span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.payment-total strong,
+.change-box strong {
+  font-size: 1.7rem;
+}
+
+.change-box.has-change {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.change-box small {
+  color: inherit;
 }
 
 .office-shell {
@@ -722,10 +797,27 @@ h2 {
   font-size: 1.35rem;
 }
 
+.metric-card em {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-style: normal;
+}
+
 .office-section,
 .product-form {
   border-radius: 22px;
   padding: 18px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.section-title small {
+  color: var(--muted);
 }
 
 .inventory-list {
@@ -736,7 +828,7 @@ h2 {
 .product-manager,
 .reports-layout {
   display: grid;
-  grid-template-columns: minmax(340px, 0.75fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
 }
 
@@ -815,6 +907,53 @@ select:focus {
   color: var(--muted);
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.period-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--soft);
+}
+
+.period-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 800;
+}
+
+.period-tabs button.active {
+  color: white;
+  background: var(--primary);
+}
+
+.period-tabs svg {
+  width: 17px;
+}
+
+.report-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .sales-table {
   display: grid;
   gap: 8px;
@@ -831,6 +970,14 @@ select:focus {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: white;
+}
+
+.sales-row.report-row {
+  grid-template-columns: minmax(130px, 1fr) 80px 80px 120px 110px 120px;
+}
+
+.compact-table .sales-row {
+  grid-template-columns: minmax(120px, 1fr) 80px 80px 110px;
 }
 
 .sales-row span:first-child {
@@ -851,7 +998,8 @@ select:focus {
   .pos-content,
   .office-shell,
   .product-manager,
-  .reports-layout {
+  .reports-layout,
+  .dashboard-grid {
     grid-template-columns: 1fr;
   }
 
@@ -860,7 +1008,8 @@ select:focus {
   }
 
   .design-grid,
-  .metric-grid {
+  .metric-grid,
+  .report-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -898,7 +1047,9 @@ select:focus {
   .design-grid,
   .metric-grid,
   .form-grid,
-  .payment-summary {
+  .payment-summary,
+  .report-metrics,
+  .period-tabs {
     grid-template-columns: 1fr;
   }
 
@@ -932,5 +1083,46 @@ select:focus {
 
   .user-chip {
     display: none;
+  }
+}
+
+@media print {
+  body,
+  .app {
+    background: white;
+  }
+
+  .office-sidebar,
+  .office-topbar,
+  .no-print {
+    display: none !important;
+  }
+
+  .office-shell,
+  .office-main,
+  .reports-layout {
+    display: block;
+    padding: 0;
+    min-height: auto;
+  }
+
+  .office-section {
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .report-print-area {
+    width: 100%;
+  }
+
+  .report-metrics {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .sales-row,
+  .sales-row.report-row {
+    min-width: 0;
+    page-break-inside: avoid;
   }
 }

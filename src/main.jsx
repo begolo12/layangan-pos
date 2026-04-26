@@ -4,7 +4,7 @@ import {
   BarChart3,
   Boxes,
   ChevronLeft,
-  CreditCard,
+  CalendarDays,
   Download,
   ImagePlus,
   KeyRound,
@@ -13,8 +13,8 @@ import {
   LogOut,
   Minus,
   PackagePlus,
-  Palette,
   Plus,
+  Printer,
   ReceiptText,
   Search,
   ShoppingCart,
@@ -103,7 +103,7 @@ const seedProducts = [
 
 const demoSales = [
   { id: 'S-1001', date: '2026-04-24', cashier: 'Kasir', total: 47000, items: 4, payment: 'Tunai' },
-  { id: 'S-1002', date: '2026-04-25', cashier: 'Kasir', total: 72000, items: 6, payment: 'QRIS' },
+  { id: 'S-1002', date: '2026-04-25', cashier: 'Kasir', total: 72000, items: 6, payment: 'Tunai' },
   { id: 'S-1003', date: '2026-04-26', cashier: 'Admin', total: 30000, items: 2, payment: 'Tunai' },
 ];
 
@@ -127,6 +127,52 @@ const users = [
     icon: ShoppingCart,
   },
 ];
+
+function toDate(dateText) {
+  const date = new Date(`${dateText}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function startOfDay(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function getPeriodRange(period) {
+  const now = startOfDay(new Date());
+  const start = new Date(now);
+
+  if (period === 'weekly') {
+    const day = start.getDay() || 7;
+    start.setDate(start.getDate() - day + 1);
+  } else if (period === 'monthly') {
+    start.setDate(1);
+  } else if (period === 'yearly') {
+    start.setMonth(0, 1);
+  }
+
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+function filterSalesByPeriod(sales, period) {
+  const { start, end } = getPeriodRange(period);
+  return sales.filter((sale) => {
+    const date = toDate(sale.date);
+    return date >= start && date <= end;
+  });
+}
+
+function getPeriodLabel(period) {
+  return {
+    daily: 'Harian',
+    weekly: 'Mingguan',
+    monthly: 'Bulanan',
+    yearly: 'Tahunan',
+  }[period];
+}
 
 function useLocalState(key, initialValue) {
   const [value, setValue] = useState(() => {
@@ -159,6 +205,10 @@ function App() {
   const theme = themes.find((item) => item.id === themeId) || themes[0];
 
   useEffect(() => {
+    if (themeId !== 'senja') setThemeId('senja');
+  }, [themeId]);
+
+  useEffect(() => {
     let unsubProducts = () => {};
     let unsubSales = () => {};
     let unsubSettings = () => {};
@@ -175,9 +225,6 @@ function App() {
         unsubSales = api.subscribeSales((items) => {
           if (items.length) setSales(items);
         }, () => setSyncStatus('Mode lokal: laporan belum tersambung'));
-        unsubSettings = api.subscribeSettings((settings) => {
-          if (settings.themeId) setThemeId(settings.themeId);
-        }, () => {});
       })
       .catch((error) => {
         const code = error?.code || error?.message || 'Firebase belum bisa diakses';
@@ -231,12 +278,6 @@ function Login({ themeId, setThemeId, setSession, syncStatus }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const fillDemo = (user) => {
-    setUsername(user.username);
-    setPassword(user.password);
-    setError('');
-  };
-
   const login = (event) => {
     event.preventDefault();
     const user = users.find(
@@ -262,27 +303,9 @@ function Login({ themeId, setThemeId, setSession, syncStatus }) {
         <p className="eyebrow">POS UMKM ringan</p>
         <h1>Layang Layar</h1>
         <p className="lead">
-          Kasir simpel untuk jualan layang-layang dan benang, plus backoffice web untuk stok,
-          laporan, dan pilihan desain.
+          Kasir simpel untuk jualan layang-layang dan benang, plus backoffice web untuk stok
+          dan laporan penjualan.
         </p>
-
-        <div className="design-grid">
-          {themes.map((theme) => (
-            <button
-              className={`theme-card ${themeId === theme.id ? 'active' : ''}`}
-              key={theme.id}
-              onClick={() => setThemeId(theme.id)}
-            >
-              <span className="swatches">
-                {theme.colors.map((color) => (
-                  <i key={color} style={{ background: color }} />
-                ))}
-              </span>
-              <strong>{theme.name}</strong>
-              <small>{theme.note}</small>
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="login-panel">
@@ -320,23 +343,6 @@ function Login({ themeId, setThemeId, setSession, syncStatus }) {
             Masuk
           </button>
         </form>
-
-        <div className="demo-login-list">
-          {users.map((user) => {
-            const Icon = user.icon;
-            return (
-              <button className="role-button" key={user.username} onClick={() => fillDemo(user)}>
-                <Icon />
-                <span>
-                  <strong>{user.title}</strong>
-                  <small>{user.note}</small>
-                  <em>{user.username} / {user.password}</em>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="login-hint">Klik contoh akun untuk mengisi form, lalu tekan Masuk.</p>
         <p className="sync-pill">{syncStatus}</p>
       </div>
     </section>
@@ -363,7 +369,8 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
   const [cart, setCart] = useState({});
-  const [payment, setPayment] = useState('Tunai');
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [cashReceived, setCashReceived] = useState('');
 
   const visibleProducts = products.filter((product) => {
     const matchesType = filter === 'semua' || product.type === filter;
@@ -394,6 +401,10 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
     });
   };
 
+  const cashNumber = Number(cashReceived || 0);
+  const change = Math.max(0, cashNumber - total);
+  const canFinishPayment = cartItems.length > 0 && cashNumber >= total;
+
   const checkout = async () => {
     if (!cartItems.length) return;
     const sale = {
@@ -402,7 +413,9 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
       cashier: 'Kasir',
       total,
       items: cartItems.reduce((sum, item) => sum + item.qty, 0),
-      payment,
+      payment: 'Tunai',
+      cashReceived: cashNumber,
+      change,
     };
     setSales([sale, ...sales]);
     const nextProducts = products.map((product) => ({
@@ -417,6 +430,8 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
       ]).catch(() => {});
     }
     setCart({});
+    setPaymentOpen(false);
+    setCashReceived('');
   };
 
   return (
@@ -483,33 +498,79 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
               </div>
             ))}
           </div>
-          <div className="payment-row">
-            {['Tunai', 'QRIS'].map((item) => (
-              <button className={payment === item ? 'active' : ''} onClick={() => setPayment(item)} key={item}>
-                {item === 'Tunai' ? <WalletCards /> : <CreditCard />}
-                {item}
-              </button>
-            ))}
+          <div className="cash-only-row">
+            <WalletCards />
+            <span>
+              <strong>Pembayaran Tunai</strong>
+              <small>Hitung uang diterima dan kembalian sebelum transaksi selesai.</small>
+            </span>
           </div>
           <div className="total-box">
             <span>Total</span>
             <strong>{currency.format(total)}</strong>
           </div>
-          <button className="checkout-button" onClick={checkout} disabled={!cartItems.length}>
+          <button className="checkout-button" onClick={() => setPaymentOpen(true)} disabled={!cartItems.length}>
             <ReceiptText />
             Bayar
           </button>
         </aside>
       </div>
+
+      {paymentOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="payment-modal">
+            <div className="section-title">
+              <div>
+                <p className="eyebrow">Pembayaran tunai</p>
+                <h2>Hitung kembalian</h2>
+              </div>
+              <button className="icon-button" aria-label="Tutup" onClick={() => setPaymentOpen(false)}>
+                <ChevronLeft />
+              </button>
+            </div>
+            <div className="payment-total">
+              <span>Total belanja</span>
+              <strong>{currency.format(total)}</strong>
+            </div>
+            <label>
+              Uang diterima
+              <input
+                autoFocus
+                inputMode="numeric"
+                type="number"
+                value={cashReceived}
+                onChange={(event) => setCashReceived(event.target.value)}
+                placeholder="Contoh: 50000"
+              />
+            </label>
+            <div className={`change-box ${canFinishPayment && change > 0 ? 'has-change' : ''}`}>
+              <span>{cashNumber < total ? 'Kurang bayar' : change > 0 ? 'Kembalian' : 'Uang pas'}</span>
+              <strong>{cashNumber < total ? currency.format(total - cashNumber) : currency.format(change)}</strong>
+              {canFinishPayment && change > 0 && <small>Serahkan kembalian ke pembeli, lalu tekan selesai.</small>}
+            </div>
+            <button className="checkout-button" onClick={checkout} disabled={!canFinishPayment}>
+              <ReceiptText />
+              {change > 0 ? 'Selesai, kembalian sudah diserahkan' : 'Selesaikan transaksi'}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-function BackOffice({ products, setProducts, sales, setSession, themeId, setThemeId, syncStatus, firebaseApi }) {
+function BackOffice({ products, setProducts, sales, setSession, syncStatus, firebaseApi }) {
   const [view, setView] = useState('dashboard');
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
   const lowStock = products.filter((product) => product.stock <= 10);
   const totalStock = products.reduce((sum, product) => sum + product.stock, 0);
+  const todaySales = filterSalesByPeriod(sales, 'daily');
+  const weeklySales = filterSalesByPeriod(sales, 'weekly');
+  const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
+  const weeklyRevenue = weeklySales.reduce((sum, sale) => sum + sale.total, 0);
+  const averageSale = sales.length ? Math.round(totalRevenue / sales.length) : 0;
+  const stockValue = products.reduce((sum, product) => sum + product.price * product.stock, 0);
+  const stockFocus = lowStock.length ? lowStock : [...products].sort((a, b) => b.stock - a.stock).slice(0, 5);
 
   return (
     <section className="office-shell">
@@ -531,9 +592,6 @@ function BackOffice({ products, setProducts, sales, setSession, themeId, setThem
           <button className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}>
             <BarChart3 /> Laporan
           </button>
-          <button className={view === 'design' ? 'active' : ''} onClick={() => setView('design')}>
-            <Palette /> Desain
-          </button>
         </nav>
         <button className="logout-button" onClick={() => setSession(null)}>
           <LogOut /> Keluar
@@ -547,7 +605,7 @@ function BackOffice({ products, setProducts, sales, setSession, themeId, setThem
           </button>
           <div>
             <p className="eyebrow">Admin</p>
-            <h1>{view === 'dashboard' ? 'Dashboard' : view === 'products' ? 'Produk & Stok' : view === 'reports' ? 'Laporan' : 'Pilihan Desain'}</h1>
+            <h1>{view === 'dashboard' ? 'Dashboard' : view === 'products' ? 'Produk & Stok' : 'Laporan'}</h1>
             <small className="sync-text">{syncStatus}</small>
           </div>
           <div className="user-chip">
@@ -558,10 +616,49 @@ function BackOffice({ products, setProducts, sales, setSession, themeId, setThem
         {view === 'dashboard' && (
           <>
             <div className="metric-grid">
-              <Metric icon={<WalletCards />} label="Omzet demo" value={currency.format(totalRevenue)} />
-              <Metric icon={<Boxes />} label="Total stok" value={totalStock} />
-              <Metric icon={<ReceiptText />} label="Transaksi" value={sales.length} />
-              <Metric icon={<PackagePlus />} label="Stok menipis" value={lowStock.length} />
+              <Metric icon={<WalletCards />} label="Omzet hari ini" value={currency.format(todayRevenue)} hint={`${todaySales.length} transaksi`} />
+              <Metric icon={<BarChart3 />} label="Omzet minggu ini" value={currency.format(weeklyRevenue)} hint={`${weeklySales.length} transaksi`} />
+              <Metric icon={<ReceiptText />} label="Rata-rata nota" value={currency.format(averageSale)} hint="Semua transaksi" />
+              <Metric icon={<PackagePlus />} label="Nilai stok" value={currency.format(stockValue)} hint={`${totalStock} barang tersedia`} />
+            </div>
+            <div className="dashboard-grid">
+              <section className="office-section">
+                <div className="section-title">
+                  <h2>Transaksi terbaru</h2>
+                  <small>{sales.length} nota tersimpan</small>
+                </div>
+                <div className="sales-table compact-table">
+                  {sales.slice(0, 6).map((sale) => (
+                    <div className="sales-row" key={sale.id}>
+                      <span>
+                        <strong>{sale.id}</strong>
+                        <small>{sale.date} - {sale.cashier}</small>
+                      </span>
+                      <span>{sale.items} item</span>
+                      <span>{sale.payment}</span>
+                      <b>{currency.format(sale.total)}</b>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="office-section">
+                <div className="section-title">
+                  <h2>Stok perlu perhatian</h2>
+                  <small>{lowStock.length} produk menipis</small>
+                </div>
+                <div className="inventory-list">
+                  {stockFocus.map((product) => (
+                    <div className="inventory-item" key={product.id}>
+                      <ProductArt product={product} />
+                      <span>
+                        <strong>{product.name}</strong>
+                        <small>{product.type} - {currency.format(product.price)}</small>
+                      </span>
+                      <b>{product.stock}</b>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
             <section className="office-section">
               <h2>Produk cepat dipantau</h2>
@@ -582,19 +679,19 @@ function BackOffice({ products, setProducts, sales, setSession, themeId, setThem
         )}
 
         {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} />}
-        {view === 'reports' && <Reports sales={sales} products={products} />}
-        {view === 'design' && <DesignPicker themeId={themeId} setThemeId={setThemeId} />}
+        {view === 'reports' && <ReportsPro sales={sales} products={products} />}
       </main>
     </section>
   );
 }
 
-function Metric({ icon, label, value }) {
+function Metric({ icon, label, value, hint }) {
   return (
     <div className="metric-card">
       <span>{icon}</span>
       <small>{label}</small>
       <strong>{value}</strong>
+      {hint && <em>{hint}</em>}
     </div>
   );
 }
@@ -699,6 +796,99 @@ function ProductManager({ products, setProducts, firebaseApi }) {
               <button className="icon-button danger" aria-label="Hapus produk" onClick={() => deleteProduct(product.id)}>
                 <Trash2 />
               </button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ReportsPro({ sales, products }) {
+  const [period, setPeriod] = useState('daily');
+  const filteredSales = useMemo(() => filterSalesByPeriod(sales, period), [sales, period]);
+  const total = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+  const totalItems = filteredSales.reduce((sum, sale) => sum + sale.items, 0);
+  const average = filteredSales.length ? Math.round(total / filteredSales.length) : 0;
+  const cashIn = filteredSales.reduce((sum, sale) => sum + (sale.cashReceived || sale.total), 0);
+  const changeOut = filteredSales.reduce((sum, sale) => sum + (sale.change || 0), 0);
+  const lowStock = products.filter((product) => product.stock <= 15);
+  const { start, end } = getPeriodRange(period);
+
+  const exportCsv = () => {
+    const rows = ['ID,Tanggal,Kasir,Item,Pembayaran,Uang Diterima,Kembalian,Total'];
+    filteredSales.forEach((sale) =>
+      rows.push(`${sale.id},${sale.date},${sale.cashier},${sale.items},${sale.payment},${sale.cashReceived || sale.total},${sale.change || 0},${sale.total}`)
+    );
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `laporan-${period}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="reports-layout">
+      <section className="office-section report-print-area">
+        <div className="section-title report-actions">
+          <div>
+            <p className="eyebrow">Laporan {getPeriodLabel(period)}</p>
+            <h2>Ringkasan penjualan</h2>
+            <small>{start.toLocaleDateString('id-ID')} - {end.toLocaleDateString('id-ID')}</small>
+          </div>
+          <div className="button-row">
+            <button className="secondary-button no-print" onClick={exportCsv}><Download /> CSV</button>
+            <button className="primary-button no-print" onClick={() => window.print()}><Printer /> Print PDF</button>
+          </div>
+        </div>
+
+        <div className="period-tabs no-print">
+          {['daily', 'weekly', 'monthly', 'yearly'].map((item) => (
+            <button className={period === item ? 'active' : ''} onClick={() => setPeriod(item)} key={item}>
+              <CalendarDays />
+              {getPeriodLabel(item)}
+            </button>
+          ))}
+        </div>
+
+        <div className="report-metrics">
+          <Metric icon={<WalletCards />} label="Total omzet" value={currency.format(total)} hint={`${filteredSales.length} transaksi`} />
+          <Metric icon={<ReceiptText />} label="Barang terjual" value={totalItems} hint="Akumulasi item" />
+          <Metric icon={<BarChart3 />} label="Rata-rata nota" value={currency.format(average)} hint="Per transaksi" />
+          <Metric icon={<WalletCards />} label="Uang masuk bersih" value={currency.format(cashIn - changeOut)} hint={`Kembalian ${currency.format(changeOut)}`} />
+        </div>
+
+        <div className="sales-table">
+          {filteredSales.length === 0 && <p className="empty">Belum ada transaksi pada periode ini.</p>}
+          {filteredSales.map((sale) => (
+            <div className="sales-row report-row" key={sale.id}>
+              <span>
+                <strong>{sale.id}</strong>
+                <small>{sale.date} - {sale.cashier}</small>
+              </span>
+              <span>{sale.items} item</span>
+              <span>{sale.payment}</span>
+              <span>{currency.format(sale.cashReceived || sale.total)}</span>
+              <span>{currency.format(sale.change || 0)}</span>
+              <b>{currency.format(sale.total)}</b>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="office-section no-print">
+        <h2>Kontrol stok</h2>
+        <div className="inventory-list compact">
+          {lowStock.length === 0 && <p className="empty">Semua stok masih aman.</p>}
+          {lowStock.map((product) => (
+            <div className="inventory-item" key={product.id}>
+              <ProductArt product={product} />
+              <span>
+                <strong>{product.name}</strong>
+                <small>Sisa stok {product.stock}</small>
+              </span>
             </div>
           ))}
         </div>
