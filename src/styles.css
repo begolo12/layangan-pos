@@ -604,6 +604,26 @@ h2 {
   line-height: 1.35;
 }
 
+.cash-input {
+  display: grid;
+  gap: 7px;
+}
+
+.cash-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cash-shortcuts button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  background: white;
+  font-weight: 800;
+}
+
 .total-box {
   display: flex;
   align-items: center;

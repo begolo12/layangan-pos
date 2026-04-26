@@ -480,49 +480,21 @@ function ProductArt({ product, large = false }) {
 function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast, productTypes }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
-  const [cart, setCart] = useState({});
-  const [paymentOpen, setPaymentOpen] = useState(false);
   const [cashReceived, setCashReceived] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-
-  const visibleProducts = products.filter((product) => {
-    const matchesType = filter === 'semua' || product.type === filter;
-    const matchesQuery = product.name.toLowerCase().includes(query.toLowerCase());
-    return matchesType && matchesQuery;
-  });
-
-  const cartItems = Object.entries(cart)
-    .map(([id, qty]) => {
-      const product = products.find((item) => item.id === id);
-      return product ? { ...product, qty } : null;
-    })
-    .filter(Boolean);
-
-  const total = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-
-  const addItem = (product) => {
-    if (product.stock <= (cart[product.id] || 0)) {
-      addToast('Stok tidak cukup', 'warning');
-      return;
-    }
-    setCart((current) => ({ ...current, [product.id]: (current[product.id] || 0) + 1 }));
-  };
-
-  const changeQty = (id, delta) => {
-    setCart((current) => {
-      const nextQty = Math.max(0, (current[id] || 0) + delta);
-      const next = { ...current, [id]: nextQty };
-      if (!nextQty) delete next[id];
-      return next;
-    });
-  };
-
   const cashNumber = Number(cashReceived || 0);
-  const change = Math.max(0, cashNumber - total);
-  const canFinishPayment = cartItems.length > 0 && cashNumber >= total;
+  const canFinishPayment = cashNumber > 0;
+
+  useEffect(() => {
+    setCashReceived('');
+  }, []);
+
+  const setShortcut = (value) => {
+    setCashReceived(String(value));
+  };
 
   const checkout = async () => {
-    if (!cartItems.length) return;
+    if (!cashNumber) return;
     
     setCheckoutLoading(true);
     try {
@@ -530,36 +502,27 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
         id: `S-${Date.now().toString().slice(-6)}`,
         date: new Date().toISOString().slice(0, 10),
         cashier: 'Kasir',
-        total,
-        items: cartItems.reduce((sum, item) => sum + item.qty, 0),
+        total: cashNumber,
+        items: 1,
         payment: 'Tunai',
         cashReceived: cashNumber,
-        change,
+        change: 0,
+        memo: 'Pemasukan kas harian',
       };
       
       setSales([sale, ...sales]);
-      const nextProducts = products.map((product) => ({
-        ...product,
-        stock: product.stock - (cart[product.id] || 0),
-      }));
-      setProducts(nextProducts);
       
       if (firebaseApi) {
         try {
-          await Promise.all([
-            firebaseApi.saveSale(sale),
-            ...cartItems.map((item) => firebaseApi.updateProductStock(item.id, item.stock - item.qty)),
-          ]);
+          await firebaseApi.saveSale(sale);
           addToast('Transaksi berhasil disimpan', 'success');
         } catch (error) {
           addToast('Transaksi tersimpan lokal, gagal sinkronisasi Firebase', 'warning');
         }
       }
       
-      setCart({});
-      setPaymentOpen(false);
       setCashReceived('');
-      addHistory?.('Transaksi baru', `${sale.id} dibuat dengan total ${currency.format(total)}.`);
+      addHistory?.('Transaksi baru', `${sale.id} dicatat dengan nominal ${currency.format(cashNumber)}.`);
     } catch (error) {
       addToast('Gagal memproses transaksi', 'error');
     } finally {
@@ -572,124 +535,53 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
       <header className="pos-header">
         <div>
           <p className="eyebrow">Mode kasir</p>
-          <h1>POS Layang Layar</h1>
+          <h1>Pemasukan Harian</h1>
         </div>
         <button className="icon-button" aria-label="Keluar" onClick={() => setSession(null)}>
           <LogOut />
         </button>
       </header>
 
-      <div className="search-row">
-        <Search />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari layang atau benang" />
-      </div>
-
-      <div className="segmented">
-        <button className={filter === 'semua' ? 'active' : ''} onClick={() => setFilter('semua')} key="semua">
-          semua
-        </button>
-        {productTypes.map((type) => (
-          <button className={filter === type.id ? 'active' : ''} onClick={() => setFilter(type.id)} key={type.id}>
-            {type.name}
-          </button>
-        ))}
-      </div>
-
       <div className="pos-content">
-        <div className="product-grid">
-          {visibleProducts.map((product) => (
-            <button className="product-tile" key={product.id} onClick={() => addItem(product)}>
-              <ProductArt product={product} />
-              <span className="type-pill">{product.type}</span>
-              <strong>{product.name}</strong>
-              <small>{product.desc}</small>
-              <span className="price-row">
-                <b>{currency.format(product.price)}</b>
-                <em>Stok {product.stock}</em>
-              </span>
-            </button>
-          ))}
-        </div>
-
         <aside className="cart-panel">
           <div className="cart-title">
-            <h2>Keranjang</h2>
-            <ShoppingCart />
-          </div>
-          <div className="cart-items">
-            {cartItems.length === 0 && <p className="empty">Tap produk untuk mulai transaksi.</p>}
-            {cartItems.map((item) => (
-              <div className="cart-item" key={item.id}>
-                <ProductArt product={item} />
-                <span>
-                  <strong>{item.name}</strong>
-                  <small>{currency.format(item.price)}</small>
-                </span>
-                <div className="stepper">
-                  <button onClick={() => changeQty(item.id, -1)}><Minus size={16} /></button>
-                  <b>{item.qty}</b>
-                  <button onClick={() => changeQty(item.id, 1)}><Plus size={16} /></button>
-                </div>
-              </div>
-            ))}
+            <h2>Catat pemasukan</h2>
+            <WalletCards />
           </div>
           <div className="cash-only-row">
             <WalletCards />
             <span>
-              <strong>Pembayaran Tunai</strong>
-              <small>Hitung uang diterima dan kembalian sebelum transaksi selesai.</small>
+              <strong>Masukkan nominal langsung</strong>
+              <small>Tanpa pilih barang. Cocok untuk catatan keuangan harian.</small>
             </span>
           </div>
-          <div className="total-box">
-            <span>Total</span>
-            <strong>{currency.format(total)}</strong>
+          <label className="cash-input">
+            Nominal masuk
+            <input
+              autoFocus
+              inputMode="numeric"
+              type="number"
+              value={cashReceived}
+              onChange={(event) => setCashReceived(event.target.value)}
+              placeholder="10000"
+            />
+          </label>
+          <div className="cash-shortcuts">
+            <button type="button" onClick={() => setShortcut(10000)}>10rb</button>
+            <button type="button" onClick={() => setShortcut(20000)}>20rb</button>
+            <button type="button" onClick={() => setShortcut(50000)}>50rb</button>
+            <button type="button" onClick={() => setShortcut(100000)}>100rb</button>
           </div>
-          <button className="checkout-button" onClick={() => setPaymentOpen(true)} disabled={!cartItems.length}>
+          <div className="total-box">
+            <span>Nominal dicatat</span>
+            <strong>{currency.format(cashNumber || 0)}</strong>
+          </div>
+          <button className="checkout-button" onClick={checkout} disabled={!canFinishPayment || checkoutLoading}>
             <ReceiptText />
-            Bayar
+            {checkoutLoading ? 'Memproses...' : 'Simpan pemasukan'}
           </button>
         </aside>
       </div>
-
-      {paymentOpen && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="payment-modal">
-            <div className="section-title">
-              <div>
-                <p className="eyebrow">Pembayaran tunai</p>
-                <h2>Hitung kembalian</h2>
-              </div>
-              <button className="icon-button" aria-label="Tutup" onClick={() => setPaymentOpen(false)}>
-                <ChevronLeft />
-              </button>
-            </div>
-            <div className="payment-total">
-              <span>Total belanja</span>
-              <strong>{currency.format(total)}</strong>
-            </div>
-            <label>
-              Uang diterima
-              <input
-                autoFocus
-                inputMode="numeric"
-                type="number"
-                value={cashReceived}
-                onChange={(event) => setCashReceived(event.target.value)}
-                placeholder="Contoh: 50000"
-              />
-            </label>
-            <div className={`change-box ${canFinishPayment && change > 0 ? 'has-change' : ''}`}>
-              <span>{cashNumber < total ? 'Kurang bayar' : change > 0 ? 'Kembalian' : 'Uang pas'}</span>
-              <strong>{cashNumber < total ? currency.format(total - cashNumber) : currency.format(change)}</strong>
-              {canFinishPayment && change > 0 && <small>Serahkan kembalian ke pembeli, lalu tekan selesai.</small>}
-            </div>
-            <button className="checkout-button" onClick={checkout} disabled={!canFinishPayment || checkoutLoading}>
-              <ReceiptText />
-              {checkoutLoading ? 'Memproses...' : change > 0 ? 'Selesai, kembalian sudah diserahkan' : 'Selesaikan transaksi'}
-            </button>
-          </div>
-        </div>
-      )}
     </section>
   );
 }
@@ -1669,9 +1561,9 @@ function ReportsPro({ sales, products }) {
 
         <div className="report-metrics">
           <Metric icon={<WalletCards />} label="Total omzet" value={currency.format(total)} hint={`${filteredSales.length} transaksi`} />
-          <Metric icon={<ReceiptText />} label="Barang terjual" value={totalItems} hint="Akumulasi item" />
-          <Metric icon={<BarChart3 />} label="Rata-rata nota" value={currency.format(average)} hint="Per transaksi" />
-          <Metric icon={<WalletCards />} label="Uang masuk bersih" value={currency.format(cashIn - changeOut)} hint={`Kembalian ${currency.format(changeOut)}`} />
+          <Metric icon={<ReceiptText />} label="Nominal bayar masuk" value={currency.format(cashIn)} hint="Sebelum kembalian" />
+          <Metric icon={<BarChart3 />} label="Total kembalian" value={currency.format(changeOut)} hint="Dikembalikan ke pembeli" />
+          <Metric icon={<WalletCards />} label="Netto kas" value={currency.format(cashIn - changeOut)} hint="Masuk ke kas" />
         </div>
 
         <div className="report-chart no-print">
@@ -1739,8 +1631,10 @@ function Reports({ sales, products }) {
   }, [sales]);
 
   const exportCsv = () => {
-    const rows = ['ID,Tanggal,Kasir,Item,Pembayaran,Total'];
-    sales.forEach((sale) => rows.push(`${sale.id},${sale.date},${sale.cashier},${sale.items},${sale.payment},${sale.total}`));
+    const rows = ['ID,Tanggal,Kasir,Item,Pembayaran,Nominal Bayar,Kembalian,Total'];
+    sales.forEach((sale) =>
+      rows.push(`${sale.id},${sale.date},${sale.cashier},${sale.items},${sale.payment},${sale.cashReceived || sale.total},${sale.change || 0},${sale.total}`)
+    );
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -1774,6 +1668,8 @@ function Reports({ sales, products }) {
               </span>
               <span>{sale.items} item</span>
               <span>{sale.payment}</span>
+              <span>{currency.format(sale.cashReceived || sale.total)}</span>
+              <span>{currency.format(sale.change || 0)}</span>
               <b>{currency.format(sale.total)}</b>
             </div>
           ))}
