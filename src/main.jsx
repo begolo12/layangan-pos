@@ -211,6 +211,11 @@ function nowStamp() {
   });
 }
 
+const defaultProductTypes = [
+  { id: 'layang', name: 'Layang-layang', color: '#2563eb' },
+  { id: 'benang', name: 'Benang', color: '#f59e0b' },
+];
+
 function useLocalState(key, initialValue) {
   const [value, setValue] = useState(() => {
     try {
@@ -239,6 +244,7 @@ function App() {
   const [appUsers, setAppUsers] = useLocalState('pos-users', users);
   const [historyLog, setHistoryLog] = useLocalState('pos-history', defaultHistory);
   const [themeId, setThemeId] = useLocalState('pos-theme', 'senja');
+  const [productTypes, setProductTypes] = useLocalState('pos-product-types', defaultProductTypes);
   const [syncStatus, setSyncStatus] = useState('Menghubungkan Firebase...');
   const [firebaseApi, setFirebaseApi] = useState(null);
   const { toasts, addToast, removeToast } = useToast();
@@ -340,6 +346,8 @@ function App() {
           firebaseApi={firebaseApi}
           addToast={addToast}
           confirm={confirm}
+          productTypes={productTypes}
+          setProductTypes={setProductTypes}
         />
       ) : (
         <PosScreen
@@ -351,6 +359,7 @@ function App() {
           firebaseApi={firebaseApi}
           addHistory={addHistory}
           addToast={addToast}
+          productTypes={productTypes}
         />
       )}
     </main>
@@ -464,7 +473,7 @@ function ProductArt({ product, large = false }) {
   );
 }
 
-function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast }) {
+function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast, productTypes }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
   const [cart, setCart] = useState({});
@@ -572,9 +581,12 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
       </div>
 
       <div className="segmented">
-        {['semua', 'layang', 'benang'].map((item) => (
-          <button className={filter === item ? 'active' : ''} onClick={() => setFilter(item)} key={item}>
-            {item}
+        <button className={filter === 'semua' ? 'active' : ''} onClick={() => setFilter('semua')} key="semua">
+          semua
+        </button>
+        {productTypes.map((type) => (
+          <button className={filter === type.id ? 'active' : ''} onClick={() => setFilter(type.id)} key={type.id}>
+            {type.name}
           </button>
         ))}
       </div>
@@ -692,6 +704,8 @@ function BackOffice({
   firebaseApi,
   addToast,
   confirm,
+  productTypes,
+  setProductTypes,
 }) {
   const [view, setView] = useState('dashboard');
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
@@ -828,7 +842,7 @@ function BackOffice({
           </>
         )}
 
-        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} confirm={confirm} />}
+        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} confirm={confirm} productTypes={productTypes} />}
         {view === 'reports' && <ReportsPro sales={sales} products={products} />}
         {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} confirm={confirm} />}
         {view === 'history' && <HistoryPage historyLog={historyLog} />}
@@ -842,6 +856,8 @@ function BackOffice({
             addHistory={addHistory}
             addToast={addToast}
             confirm={confirm}
+            productTypes={productTypes}
+            setProductTypes={setProductTypes}
           />
         )}
       </main>
@@ -860,7 +876,7 @@ function Metric({ icon, label, value, hint }) {
   );
 }
 
-function ProductManager({ products, setProducts, firebaseApi, addHistory, addToast, confirm }) {
+function ProductManager({ products, setProducts, firebaseApi, addHistory, addToast, confirm, productTypes }) {
   const emptyForm = { name: '', type: 'layang', price: '', stock: '', minStock: 10, desc: '', image: '', color: '#0f766e' };
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState('');
@@ -1024,8 +1040,9 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
           <label>
             Tipe
             <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>
-              <option value="layang">Layang-layang</option>
-              <option value="benang">Benang</option>
+              {productTypes.map((type) => (
+                <option value={type.id} key={type.id}>{type.name}</option>
+              ))}
             </select>
           </label>
           <label>
@@ -1263,7 +1280,7 @@ function HistoryPage({ historyLog }) {
   );
 }
 
-function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHistoryLog, addHistory, addToast, confirm }) {
+function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHistoryLog, addHistory, addToast, confirm, productTypes, setProductTypes }) {
   const [forms, setForms] = useState(() =>
     authUsers.reduce((acc, user) => ({ ...acc, [user.username]: { password: user.password, confirm: user.password } }), {})
   );
@@ -1271,6 +1288,10 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
   const [visiblePasswords, setVisiblePasswords] = useState({});
   const [resetPassword, setResetPassword] = useState('');
   const [saving, setSaving] = useState(false);
+  
+  // Product types management
+  const [typeForm, setTypeForm] = useState({ id: '', name: '', color: '#2563eb' });
+  const [editingTypeId, setEditingTypeId] = useState('');
 
   const savePassword = (username) => {
     const next = forms[username];
@@ -1360,10 +1381,155 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
       setSaving(false);
     }
   };
+  
+  // Product types management functions
+  const saveProductType = () => {
+    if (!typeForm.name || !typeForm.id) {
+      addToast('Nama dan ID tipe harus diisi', 'error');
+      return;
+    }
+    
+    if (editingTypeId) {
+      // Update existing type
+      setProductTypes((current) =>
+        current.map((type) => (type.id === editingTypeId ? { ...typeForm } : type))
+      );
+      addToast('Tipe produk berhasil diperbarui', 'success');
+      addHistory?.('Tipe produk diedit', `Tipe "${typeForm.name}" diperbarui.`);
+    } else {
+      // Add new type
+      if (productTypes.find((type) => type.id === typeForm.id)) {
+        addToast('ID tipe sudah digunakan', 'error');
+        return;
+      }
+      setProductTypes((current) => [...current, { ...typeForm }]);
+      addToast('Tipe produk berhasil ditambahkan', 'success');
+      addHistory?.('Tipe produk baru', `Tipe "${typeForm.name}" ditambahkan.`);
+    }
+    
+    setTypeForm({ id: '', name: '', color: '#2563eb' });
+    setEditingTypeId('');
+  };
+  
+  const editProductType = (type) => {
+    setEditingTypeId(type.id);
+    setTypeForm({ ...type });
+  };
+  
+  const deleteProductType = async (typeId) => {
+    const type = productTypes.find((t) => t.id === typeId);
+    
+    // Check if any products use this type
+    const productsUsingType = products.filter((p) => p.type === typeId);
+    if (productsUsingType.length > 0) {
+      addToast(`Tidak bisa hapus: ${productsUsingType.length} produk masih menggunakan tipe ini`, 'error');
+      return;
+    }
+    
+    const confirmed = await confirm(
+      `Apakah Anda yakin ingin menghapus tipe "${type?.name}"?`,
+      'Hapus Tipe Produk'
+    );
+    
+    if (!confirmed) return;
+    
+    setProductTypes((current) => current.filter((t) => t.id !== typeId));
+    addToast('Tipe produk berhasil dihapus', 'success');
+    addHistory?.('Tipe produk dihapus', `Tipe "${type?.name}" dihapus.`);
+  };
+  
+  const cancelEditType = () => {
+    setEditingTypeId('');
+    setTypeForm({ id: '', name: '', color: '#2563eb' });
+  };
 
   return (
     <section className="office-section">
       <div className="section-title">
+        <div>
+          <p className="eyebrow">Akun aplikasi</p>
+          <h2>Setting password</h2>
+        </div>
+      </div>
+      {message && <p className="login-error">{message}</p>}
+      
+      {/* Product Types Management */}
+      <div className="section-title" style={{ marginTop: '32px' }}>
+        <div>
+          <p className="eyebrow">Tipe produk</p>
+          <h2>Kelola tipe produk</h2>
+          <small>Tambah, edit, atau hapus tipe produk untuk bisnis Anda</small>
+        </div>
+      </div>
+      
+      <div className="product-types-section">
+        <div className="type-form-card">
+          <strong>{editingTypeId ? 'Edit Tipe Produk' : 'Tambah Tipe Baru'}</strong>
+          <label>
+            ID Tipe (huruf kecil, tanpa spasi)
+            <input
+              value={typeForm.id}
+              onChange={(event) => setTypeForm({ ...typeForm, id: event.target.value.toLowerCase().replace(/\s/g, '-') })}
+              placeholder="contoh: mainan"
+              disabled={!!editingTypeId}
+            />
+          </label>
+          <label>
+            Nama Tipe
+            <input
+              value={typeForm.name}
+              onChange={(event) => setTypeForm({ ...typeForm, name: event.target.value })}
+              placeholder="contoh: Mainan Anak"
+            />
+          </label>
+          <label>
+            Warna
+            <input
+              type="color"
+              value={typeForm.color}
+              onChange={(event) => setTypeForm({ ...typeForm, color: event.target.value })}
+            />
+          </label>
+          <div className="button-row">
+            <button className="primary-button" onClick={saveProductType}>
+              {editingTypeId ? 'Update Tipe' : 'Tambah Tipe'}
+            </button>
+            {editingTypeId && (
+              <button className="secondary-button" onClick={cancelEditType}>
+                Batal
+              </button>
+            )}
+          </div>
+        </div>
+        
+        <div className="types-list">
+          <strong>Tipe Produk Aktif ({productTypes.length})</strong>
+          {productTypes.map((type) => (
+            <div className="type-item" key={type.id}>
+              <div className="type-color" style={{ background: type.color }} />
+              <span>
+                <strong>{type.name}</strong>
+                <small>ID: {type.id}</small>
+              </span>
+              <div className="row-actions">
+                <button className="secondary-button" onClick={() => editProductType(type)}>
+                  Edit
+                </button>
+                <button
+                  className="icon-button danger"
+                  onClick={() => deleteProductType(type.id)}
+                  aria-label="Hapus tipe"
+                >
+                  <Trash2 />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Password Management */}
+      <div className="section-title" style={{ marginTop: '32px' }}>
         <div>
           <p className="eyebrow">Akun aplikasi</p>
           <h2>Setting password</h2>
