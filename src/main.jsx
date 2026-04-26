@@ -920,6 +920,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
         await firebaseApi?.saveProduct(product);
         addToast(editingId ? 'Produk berhasil diperbarui' : 'Produk berhasil ditambahkan', 'success');
       } catch (error) {
+        console.error('Firebase save error:', error);
         addToast('Produk tersimpan lokal, gagal sinkronisasi Firebase', 'warning');
       }
       
@@ -927,6 +928,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
       setForm(emptyForm);
       setEditingId('');
     } catch (error) {
+      console.error('Product save error:', error);
       addToast('Gagal menyimpan produk', 'error');
     } finally {
       setSaving(false);
