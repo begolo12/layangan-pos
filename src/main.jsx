@@ -1308,6 +1308,7 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
     
     setSaving(true);
     try {
+      // Reset semua data ke kondisi awal
       setProducts(seedProducts);
       setSales([]);
       setUsers(users);
@@ -1320,6 +1321,27 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
           detail: 'Semua data lokal aplikasi dikembalikan ke kondisi awal.',
         },
       ]);
+      
+      // Clear localStorage untuk memastikan data benar-benar direset
+      localStorage.removeItem('pos-products');
+      localStorage.removeItem('pos-sales');
+      localStorage.removeItem('pos-users');
+      localStorage.removeItem('pos-history');
+      
+      // Set ulang dengan data awal
+      localStorage.setItem('pos-products', JSON.stringify(seedProducts));
+      localStorage.setItem('pos-sales', JSON.stringify([]));
+      localStorage.setItem('pos-users', JSON.stringify(users));
+      localStorage.setItem('pos-history', JSON.stringify([
+        {
+          id: `H-${Date.now().toString().slice(-6)}`,
+          time: nowStamp(),
+          actor: 'Admin',
+          action: 'Reset data',
+          detail: 'Semua data lokal aplikasi dikembalikan ke kondisi awal.',
+        },
+      ]));
+      
       setResetPassword('');
       setMessage('Data aplikasi berhasil direset.');
       addToast('Data aplikasi berhasil direset', 'success');
