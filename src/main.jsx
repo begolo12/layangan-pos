@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import { useToast, ToastContainer } from './hooks/useToast';
+import { useConfirmDialog, ConfirmDialog } from './hooks/useConfirmDialog';
 import { validators, sanitize } from './utils/validators';
 
 const currency = new Intl.NumberFormat('id-ID', {
@@ -240,6 +241,7 @@ function App() {
   const [syncStatus, setSyncStatus] = useState('Menghubungkan Firebase...');
   const [firebaseApi, setFirebaseApi] = useState(null);
   const { toasts, addToast, removeToast } = useToast();
+  const { dialog, confirm, setDialog } = useConfirmDialog();
   const theme = themes.find((item) => item.id === themeId) || themes[0];
 
   useEffect(() => {
@@ -311,6 +313,7 @@ function App() {
   return (
     <main className={`app theme-${theme.id}`}>
       <ToastContainer toasts={toasts} removeToast={removeToast} />
+      <ConfirmDialog dialog={dialog} onClose={() => setDialog(null)} />
       {!session ? (
         <Login users={appUsers} setSession={setSession} addToast={addToast} />
       ) : session.role === 'admin' ? (
@@ -329,6 +332,7 @@ function App() {
           setThemeId={changeTheme}
           firebaseApi={firebaseApi}
           addToast={addToast}
+          confirm={confirm}
         />
       ) : (
         <PosScreen
@@ -680,6 +684,7 @@ function BackOffice({
   addHistory,
   firebaseApi,
   addToast,
+  confirm,
 }) {
   const [view, setView] = useState('dashboard');
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
@@ -816,9 +821,9 @@ function BackOffice({
           </>
         )}
 
-        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} />}
+        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} confirm={confirm} />}
         {view === 'reports' && <ReportsPro sales={sales} products={products} />}
-        {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} />}
+        {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} confirm={confirm} />}
         {view === 'history' && <HistoryPage historyLog={historyLog} />}
         {view === 'settings' && (
           <SettingsPage
@@ -829,6 +834,7 @@ function BackOffice({
             setHistoryLog={setHistoryLog}
             addHistory={addHistory}
             addToast={addToast}
+            confirm={confirm}
           />
         )}
       </main>
@@ -847,7 +853,7 @@ function Metric({ icon, label, value, hint }) {
   );
 }
 
-function ProductManager({ products, setProducts, firebaseApi, addHistory, addToast }) {
+function ProductManager({ products, setProducts, firebaseApi, addHistory, addToast, confirm }) {
   const emptyForm = { name: '', type: 'layang', price: '', stock: '', minStock: 10, desc: '', image: '', color: '#0f766e' };
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState('');
@@ -952,9 +958,14 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
     }
   };
 
-  const deleteProduct = (id) => {
+  const deleteProduct = async (id) => {
     const deletedProduct = products.find((item) => item.id === id);
-    if (!window.confirm(`Hapus produk ${deletedProduct?.name || id}?`)) return;
+    const confirmed = await confirm(
+      `Apakah Anda yakin ingin menghapus produk "${deletedProduct?.name || id}"?`,
+      'Hapus Produk'
+    );
+    
+    if (!confirmed) return;
     
     setProducts(products.filter((product) => product.id !== id));
     try {
@@ -1074,7 +1085,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
   );
 }
 
-function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast }) {
+function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast, confirm }) {
   const emptyForm = { id: '', date: '', cashier: '', items: '', total: '', cashReceived: '', change: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -1128,25 +1139,23 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
   };
 
   const deleteSale = async (sale) => {
-    if (!window.confirm(`Hapus transaksi ${sale.id}?`)) return;
+    const confirmed = await confirm(
+      `Apakah Anda yakin ingin menghapus transaksi "${sale.id}"?`,
+      'Hapus Transaksi'
+    );
     
-    setSaving(true);
+    if (!confirmed) return;
+    
+    setSales((current) => current.filter((item) => item.id !== sale.id));
+    
     try {
-      setSales((current) => current.filter((item) => item.id !== sale.id));
-      
-      try {
-        await firebaseApi?.removeSale?.(sale.id);
-        addToast('Transaksi berhasil dihapus', 'success');
-      } catch (error) {
-        addToast('Transaksi dihapus lokal, gagal sinkronisasi Firebase', 'warning');
-      }
-      
-      addHistory?.('Transaksi dihapus', `${sale.id} dengan total ${currency.format(sale.total)} dihapus.`);
+      await firebaseApi?.removeSale?.(sale.id);
+      addToast('Transaksi berhasil dihapus', 'success');
     } catch (error) {
-      addToast('Gagal menghapus transaksi', 'error');
-    } finally {
-      setSaving(false);
+      addToast('Transaksi dihapus lokal, gagal sinkronisasi Firebase', 'warning');
     }
+    
+    addHistory?.('Transaksi dihapus', `${sale.id} dengan total ${currency.format(sale.total)} dihapus.`);
   };
 
   return (
@@ -1245,7 +1254,7 @@ function HistoryPage({ historyLog }) {
   );
 }
 
-function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHistoryLog, addHistory, addToast }) {
+function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHistoryLog, addHistory, addToast, confirm }) {
   const [forms, setForms] = useState(() =>
     authUsers.reduce((acc, user) => ({ ...acc, [user.username]: { password: user.password, confirm: user.password } }), {})
   );
@@ -1282,14 +1291,20 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
     }
   };
 
-  const resetAllData = () => {
+  const resetAllData = async () => {
     const admin = authUsers.find((user) => user.username === 'admin');
     if (!resetPassword || resetPassword !== admin?.password) {
       setMessage('Password admin tidak sesuai. Reset dibatalkan.');
       addToast('Password admin tidak sesuai', 'error');
       return;
     }
-    if (!window.confirm('Reset semua data transaksi, produk, history, dan password ke awal?')) return;
+    
+    const confirmed = await confirm(
+      'Ini akan menghapus SEMUA data transaksi, produk, history, dan mengembalikan password ke awal. Tindakan ini tidak bisa dibatalkan!',
+      'Reset Semua Data'
+    );
+    
+    if (!confirmed) return;
     
     setSaving(true);
     try {

@@ -1532,6 +1532,89 @@ select:focus {
   font-weight: bold;
 }
 
+/* Confirm Dialog */
+.confirm-modal {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  max-width: 400px;
+  width: 90%;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+.confirm-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.confirm-icon {
+  color: var(--danger);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  flex: 1;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.modal-close:hover {
+  color: var(--text);
+}
+
+.confirm-body {
+  padding: 20px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.confirm-body p {
+  margin: 0;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+}
+
+.confirm-actions button {
+  min-width: 100px;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 640px) {
   .toast-container {
     left: 8px;
@@ -1542,5 +1625,26 @@ select:focus {
   .toast {
     font-size: 0.85rem;
     padding: 10px 12px;
+  }
+
+  .confirm-modal {
+    width: 95%;
+  }
+
+  .confirm-header {
+    padding: 16px;
+  }
+
+  .confirm-body {
+    padding: 16px;
+  }
+
+  .confirm-actions {
+    padding: 12px 16px;
+    flex-direction: column-reverse;
+  }
+
+  .confirm-actions button {
+    width: 100%;
   }
 }
