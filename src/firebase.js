@@ -50,8 +50,33 @@ export async function loginWithEmail(email, password) {
     
     // Get user role from Firestore
     const userDoc = await getDoc(doc(db, 'users', user.uid));
+    
+    // If user document doesn't exist, create it with default role
     if (!userDoc.exists()) {
-      throw new Error('User role not found. Please contact administrator.');
+      console.log('User document not found, creating...');
+      
+      // Determine role based on email
+      const role = email.includes('admin') ? 'admin' : 'cashier';
+      const name = email.includes('admin') ? 'Admin' : 'Kasir';
+      
+      const userData = {
+        email: user.email,
+        role: role,
+        name: name,
+        createdAt: serverTimestamp(),
+      };
+      
+      // Create user document
+      await setDoc(doc(db, 'users', user.uid), userData);
+      
+      console.log('User document created:', userData);
+      
+      return {
+        uid: user.uid,
+        email: user.email,
+        role: role,
+        name: name,
+      };
     }
     
     const userData = userDoc.data();
