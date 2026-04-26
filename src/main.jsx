@@ -366,12 +366,11 @@ function App() {
   );
 }
 
-function Login({ users, setSession, addToast }) {
+function Login({ setSession, addToast }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [useFirebaseAuth, setUseFirebaseAuth] = useState(true);
 
   const login = async (event) => {
     event.preventDefault();
@@ -379,37 +378,18 @@ function Login({ users, setSession, addToast }) {
     setLoading(true);
 
     try {
-      if (useFirebaseAuth) {
-        // Firebase Authentication
-        const firebaseModule = await import('./firebase');
-        const userData = await firebaseModule.loginWithEmail(email, password);
-        
-        setSession({
-          uid: userData.uid,
-          email: userData.email,
-          role: userData.role,
-          name: userData.name,
-          firebaseAuth: true,
-        });
-        addToast(`Selamat datang, ${userData.name}!`, 'success');
-      } else {
-        // Local Authentication (fallback)
-        const user = users.find(
-          (item) =>
-            item.username.toLowerCase() === email.trim().toLowerCase() &&
-            item.password === password
-        );
-
-        if (!user) {
-          setError('Username atau password belum cocok.');
-          addToast('Login gagal: username atau password salah', 'error');
-          setLoading(false);
-          return;
-        }
-
-        setSession({ role: user.role, name: user.name, firebaseAuth: false });
-        addToast(`Selamat datang, ${user.name}!`, 'success');
-      }
+      // Firebase Authentication
+      const firebaseModule = await import('./firebase');
+      const userData = await firebaseModule.loginWithEmail(email, password);
+      
+      setSession({
+        uid: userData.uid,
+        email: userData.email,
+        role: userData.role,
+        name: userData.name,
+        firebaseAuth: true,
+      });
+      addToast(`Selamat datang, ${userData.name}!`, 'success');
     } catch (err) {
       console.error('Login error:', err);
       setError(err.message || 'Terjadi kesalahan saat login');
@@ -438,35 +418,16 @@ function Login({ users, setSession, addToast }) {
           <p className="eyebrow">Masuk aplikasi</p>
           <h2>Login toko</h2>
           
-          <div className="auth-toggle">
-            <label className="toggle-option">
-              <input
-                type="radio"
-                checked={useFirebaseAuth}
-                onChange={() => setUseFirebaseAuth(true)}
-              />
-              <span>Firebase Auth</span>
-            </label>
-            <label className="toggle-option">
-              <input
-                type="radio"
-                checked={!useFirebaseAuth}
-                onChange={() => setUseFirebaseAuth(false)}
-              />
-              <span>Local Auth</span>
-            </label>
-          </div>
-          
           <label>
-            {useFirebaseAuth ? 'Email' : 'Username'}
+            Email
             <span className="input-with-icon">
               <UserRound />
               <input
-                autoComplete="username"
-                type={useFirebaseAuth ? 'email' : 'text'}
+                autoComplete="email"
+                type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder={useFirebaseAuth ? 'admin@admin.com' : 'admin atau kasir'}
+                placeholder="admin@admin.com atau kasir@kasir.com"
                 disabled={loading}
               />
             </span>
@@ -491,11 +452,9 @@ function Login({ users, setSession, addToast }) {
             {loading ? 'Sedang login...' : 'Masuk'}
           </button>
           
-          {useFirebaseAuth && (
-            <p className="login-hint">
-              Gunakan akun Firebase: admin@admin.com atau kasir@kasir.com
-            </p>
-          )}
+          <p className="login-hint">
+            Gunakan akun Firebase: admin@admin.com atau kasir@kasir.com
+          </p>
         </form>
       </div>
     </section>
