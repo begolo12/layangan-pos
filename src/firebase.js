@@ -1,10 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   getFirestore,
   onSnapshot,
@@ -45,10 +46,42 @@ export async function ensureFirebaseAuth() {
 export async function loginWithEmail(email, password) {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return userCredential.user;
+    const user = userCredential.user;
+    
+    // Get user role from Firestore
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (!userDoc.exists()) {
+      throw new Error('User role not found. Please contact administrator.');
+    }
+    
+    const userData = userDoc.data();
+    return {
+      uid: user.uid,
+      email: user.email,
+      role: userData.role,
+      name: userData.name || 'User',
+    };
   } catch (error) {
-    throw new Error(error.message);
+    console.error('Login error:', error);
+    throw error;
   }
+}
+
+export async function getUserRole(uid) {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', uid));
+    if (!userDoc.exists()) {
+      return null;
+    }
+    return userDoc.data();
+  } catch (error) {
+    console.error('Get user role error:', error);
+    return null;
+  }
+}
+
+export function onAuthChange(callback) {
+  return onAuthStateChanged(auth, callback);
 }
 
 export async function logout() {

@@ -367,10 +367,11 @@ function App() {
 }
 
 function Login({ users, setSession, addToast }) {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [useFirebaseAuth, setUseFirebaseAuth] = useState(true);
 
   const login = async (event) => {
     event.preventDefault();
@@ -378,24 +379,41 @@ function Login({ users, setSession, addToast }) {
     setLoading(true);
 
     try {
-      const user = users.find(
-        (item) =>
-          item.username.toLowerCase() === username.trim().toLowerCase() &&
-          item.password === password
-      );
+      if (useFirebaseAuth) {
+        // Firebase Authentication
+        const firebaseModule = await import('./firebase');
+        const userData = await firebaseModule.loginWithEmail(email, password);
+        
+        setSession({
+          uid: userData.uid,
+          email: userData.email,
+          role: userData.role,
+          name: userData.name,
+          firebaseAuth: true,
+        });
+        addToast(`Selamat datang, ${userData.name}!`, 'success');
+      } else {
+        // Local Authentication (fallback)
+        const user = users.find(
+          (item) =>
+            item.username.toLowerCase() === email.trim().toLowerCase() &&
+            item.password === password
+        );
 
-      if (!user) {
-        setError('Username atau password belum cocok.');
-        addToast('Login gagal: username atau password salah', 'error');
-        setLoading(false);
-        return;
+        if (!user) {
+          setError('Username atau password belum cocok.');
+          addToast('Login gagal: username atau password salah', 'error');
+          setLoading(false);
+          return;
+        }
+
+        setSession({ role: user.role, name: user.name, firebaseAuth: false });
+        addToast(`Selamat datang, ${user.name}!`, 'success');
       }
-
-      setSession({ role: user.role, name: user.name });
-      addToast(`Selamat datang, ${user.name}!`, 'success');
     } catch (err) {
-      setError('Terjadi kesalahan saat login');
-      addToast('Terjadi kesalahan saat login', 'error');
+      console.error('Login error:', err);
+      setError(err.message || 'Terjadi kesalahan saat login');
+      addToast(err.message || 'Login gagal', 'error');
     } finally {
       setLoading(false);
     }
@@ -419,15 +437,36 @@ function Login({ users, setSession, addToast }) {
         <form className="login-form" onSubmit={login}>
           <p className="eyebrow">Masuk aplikasi</p>
           <h2>Login toko</h2>
+          
+          <div className="auth-toggle">
+            <label className="toggle-option">
+              <input
+                type="radio"
+                checked={useFirebaseAuth}
+                onChange={() => setUseFirebaseAuth(true)}
+              />
+              <span>Firebase Auth</span>
+            </label>
+            <label className="toggle-option">
+              <input
+                type="radio"
+                checked={!useFirebaseAuth}
+                onChange={() => setUseFirebaseAuth(false)}
+              />
+              <span>Local Auth</span>
+            </label>
+          </div>
+          
           <label>
-            Username
+            {useFirebaseAuth ? 'Email' : 'Username'}
             <span className="input-with-icon">
               <UserRound />
               <input
                 autoComplete="username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="admin atau kasir"
+                type={useFirebaseAuth ? 'email' : 'text'}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder={useFirebaseAuth ? 'admin@admin.com' : 'admin atau kasir'}
                 disabled={loading}
               />
             </span>
@@ -451,6 +490,12 @@ function Login({ users, setSession, addToast }) {
             <KeyRound />
             {loading ? 'Sedang login...' : 'Masuk'}
           </button>
+          
+          {useFirebaseAuth && (
+            <p className="login-hint">
+              Gunakan akun Firebase: admin@admin.com atau kasir@kasir.com
+            </p>
+          )}
         </form>
       </div>
     </section>

@@ -214,6 +214,40 @@ h2 {
   font-weight: 800;
 }
 
+.login-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-toggle {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--soft);
+  border-radius: 8px;
+}
+
+.toggle-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.toggle-option input[type="radio"] {
+  cursor: pointer;
+}
+
+.login-hint {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.4;
+}
+
 .login-error {
   margin: 0;
   padding: 10px 12px;
