@@ -609,6 +609,27 @@ h2 {
   gap: 7px;
 }
 
+.sale-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sale-type-tabs button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  background: white;
+  font-weight: 800;
+}
+
+.sale-type-tabs button.active {
+  color: white;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
 .cash-shortcuts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1354,7 +1375,8 @@ select:focus {
   .form-grid,
   .payment-summary,
   .report-metrics,
-  .period-tabs {
+  .period-tabs,
+  .sale-type-tabs {
     grid-template-columns: 1fr;
   }
 

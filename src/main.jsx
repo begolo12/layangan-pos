@@ -118,9 +118,9 @@ const seedProducts = [
 ];
 
 const demoSales = [
-  { id: 'S-1001', date: '2026-04-24', cashier: 'Kasir', total: 47000, items: 4, payment: 'Tunai' },
-  { id: 'S-1002', date: '2026-04-25', cashier: 'Kasir', total: 72000, items: 6, payment: 'Tunai' },
-  { id: 'S-1003', date: '2026-04-26', cashier: 'Admin', total: 30000, items: 2, payment: 'Tunai' },
+  { id: 'S-1001', date: '2026-04-24', cashier: 'Kasir', total: 47000, items: 4, payment: 'Tunai', category: 'layangan' },
+  { id: 'S-1002', date: '2026-04-25', cashier: 'Kasir', total: 72000, items: 6, payment: 'Tunai', category: 'benang' },
+  { id: 'S-1003', date: '2026-04-26', cashier: 'Admin', total: 30000, items: 2, payment: 'Tunai', category: 'layangan' },
 ];
 
 const users = [
@@ -216,6 +216,15 @@ const defaultProductTypes = [
   { id: 'benang', name: 'Benang', color: '#f59e0b' },
 ];
 
+const saleCategories = [
+  { id: 'layangan', name: 'Layangan' },
+  { id: 'benang', name: 'Benang' },
+];
+
+function getSaleCategoryLabel(category) {
+  return saleCategories.find((item) => item.id === category)?.name || 'Umum';
+}
+
 function useLocalState(key, initialValue) {
   const [value, setValue] = useState(() => {
     try {
@@ -258,7 +267,7 @@ function App() {
   // Make test function available in console
   useEffect(() => {
     window.testFirebaseConnection = testFirebaseConnection;
-    console.log('💡 Tip: Run testFirebaseConnection() in console to test Firebase connection');
+    console.log('Tip: Run testFirebaseConnection() in console to test Firebase connection');
   }, []);
 
   useEffect(() => {
@@ -480,6 +489,7 @@ function ProductArt({ product, large = false }) {
 function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast, productTypes }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
+  const [saleCategory, setSaleCategory] = useState('layangan');
   const [cashReceived, setCashReceived] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const cashNumber = Number(cashReceived || 0);
@@ -507,7 +517,8 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
         payment: 'Tunai',
         cashReceived: cashNumber,
         change: 0,
-        memo: 'Pemasukan kas harian',
+        category: saleCategory,
+        memo: getSaleCategoryLabel(saleCategory),
       };
       
       setSales([sale, ...sales]);
@@ -522,7 +533,7 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
       }
       
       setCashReceived('');
-      addHistory?.('Transaksi baru', `${sale.id} dicatat dengan nominal ${currency.format(cashNumber)}.`);
+      addHistory?.('Transaksi baru', `${sale.id} dicatat sebagai ${getSaleCategoryLabel(saleCategory)} sebesar ${currency.format(cashNumber)}.`);
     } catch (error) {
       addToast('Gagal memproses transaksi', 'error');
     } finally {
@@ -551,12 +562,24 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
           <div className="cash-only-row">
             <WalletCards />
             <span>
-              <strong>Masukkan nominal langsung</strong>
-              <small>Tanpa pilih barang. Cocok untuk catatan keuangan harian.</small>
+              <strong>Pilih kategori lalu masukkan nominal</strong>
+              <small>Kasir tinggal tap layangan atau benang, lalu isi uang masuk.</small>
             </span>
           </div>
+          <div className="sale-type-tabs" role="tablist" aria-label="Kategori penjualan">
+            {saleCategories.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={saleCategory === item.id ? 'active' : ''}
+                onClick={() => setSaleCategory(item.id)}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
           <label className="cash-input">
-            Nominal masuk
+            Nominal transaksi
             <input
               autoFocus
               inputMode="numeric"
@@ -573,7 +596,7 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
             <button type="button" onClick={() => setShortcut(100000)}>100rb</button>
           </div>
           <div className="total-box">
-            <span>Nominal dicatat</span>
+            <span>{getSaleCategoryLabel(saleCategory)}</span>
             <strong>{currency.format(cashNumber || 0)}</strong>
           </div>
           <button className="checkout-button" onClick={checkout} disabled={!canFinishPayment || checkoutLoading}>
@@ -728,7 +751,7 @@ function BackOffice({
                     <ProductArt product={product} />
                     <span>
                       <strong>{product.name}</strong>
-                      <small>{product.type} • {currency.format(product.price)}</small>
+                      <small>{product.type} - {currency.format(product.price)}</small>
                     </span>
                     <b>{product.stock}</b>
                   </div>
@@ -988,7 +1011,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
               <ProductArt product={product} large />
               <span>
                 <strong>{product.name}</strong>
-                <small>{product.type} • {currency.format(product.price)} • stok {product.stock}</small>
+                <small>{product.type} - {currency.format(product.price)} - stok {product.stock}</small>
               </span>
               <b>{currency.format(product.price)}</b>
               <em>Stok {product.stock} / min {product.minStock || 10}</em>
@@ -1008,7 +1031,7 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
 }
 
 function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast, confirm }) {
-  const emptyForm = { id: '', date: '', cashier: '', items: '', total: '', cashReceived: '', change: '' };
+  const emptyForm = { id: '', date: '', cashier: '', category: 'layangan', items: '', total: '', cashReceived: '', change: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
@@ -1017,6 +1040,7 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
       id: sale.id,
       date: sale.date,
       cashier: sale.cashier,
+      category: sale.category || 'layangan',
       items: sale.items,
       total: sale.total,
       cashReceived: sale.cashReceived || sale.total,
@@ -1035,11 +1059,13 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
         id: form.id,
         date: form.date,
         cashier: form.cashier || 'Admin',
+        category: form.category || 'layangan',
         items: Number(form.items || 0),
         total: Number(form.total || 0),
         payment: 'Tunai',
         cashReceived: Number(form.cashReceived || form.total || 0),
         change: Number(form.change || 0),
+        memo: getSaleCategoryLabel(form.category || 'layangan'),
       };
       
       setSales((current) => current.map((sale) => (sale.id === form.id ? updatedSale : sale)));
@@ -1051,7 +1077,7 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
         addToast('Transaksi diperbarui lokal, gagal sinkronisasi Firebase', 'warning');
       }
       
-      addHistory?.('Transaksi diedit', `${updatedSale.id} diperbarui menjadi ${currency.format(updatedSale.total)}.`);
+      addHistory?.('Transaksi diedit', `${updatedSale.id} diperbarui sebagai ${getSaleCategoryLabel(updatedSale.category)} sebesar ${currency.format(updatedSale.total)}.`);
       setForm(emptyForm);
     } catch (error) {
       addToast('Gagal memperbarui transaksi', 'error');
@@ -1100,6 +1126,14 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
             <input value={form.cashier} onChange={(event) => setForm({ ...form, cashier: event.target.value })} disabled={!form.id} />
           </label>
           <label>
+            Kategori
+            <select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} disabled={!form.id}>
+              {saleCategories.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Jumlah item
             <input type="number" value={form.items} onChange={(event) => setForm({ ...form, items: event.target.value })} disabled={!form.id} />
           </label>
@@ -1132,9 +1166,9 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
             <div className="sales-row transaction-row" key={sale.id}>
               <span>
                 <strong>{sale.id}</strong>
-                <small>{sale.date} - {sale.cashier}</small>
+                <small>{sale.date} - {sale.cashier} - {getSaleCategoryLabel(sale.category)}</small>
               </span>
-              <span>{sale.items} item</span>
+              <span>{sale.memo || getSaleCategoryLabel(sale.category)}</span>
               <b>{currency.format(sale.total)}</b>
               <div className="row-actions">
                 <button className="secondary-button" onClick={() => editSale(sale)}>Edit</button>
@@ -1505,11 +1539,9 @@ function ReportsPro({ sales, products }) {
   const [period, setPeriod] = useState('daily');
   const filteredSales = useMemo(() => filterSalesByPeriod(sales, period), [sales, period]);
   const total = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
-  const totalItems = filteredSales.reduce((sum, sale) => sum + sale.items, 0);
-  const average = filteredSales.length ? Math.round(total / filteredSales.length) : 0;
   const cashIn = filteredSales.reduce((sum, sale) => sum + (sale.cashReceived || sale.total), 0);
   const changeOut = filteredSales.reduce((sum, sale) => sum + (sale.change || 0), 0);
-  const lowStock = products.filter(isLowStock);
+  const netCash = cashIn - changeOut;
   const { start, end } = getPeriodRange(period);
   const chartRows = useMemo(() => {
     const grouped = filteredSales.reduce((acc, sale) => {
@@ -1522,9 +1554,9 @@ function ReportsPro({ sales, products }) {
   }, [filteredSales]);
 
   const exportCsv = () => {
-    const rows = ['ID,Tanggal,Kasir,Item,Pembayaran,Uang Diterima,Kembalian,Total'];
+    const rows = ['ID,Tanggal,Kasir,Kategori,Pembayaran,Nominal Masuk,Kembalian,Netto Kas'];
     filteredSales.forEach((sale) =>
-      rows.push(`${sale.id},${sale.date},${sale.cashier},${sale.items},${sale.payment},${sale.cashReceived || sale.total},${sale.change || 0},${sale.total}`)
+      rows.push(`${sale.id},${sale.date},${sale.cashier},${getSaleCategoryLabel(sale.category)},${sale.payment},${sale.cashReceived || sale.total},${sale.change || 0},${(sale.cashReceived || sale.total) - (sale.change || 0)}`)
     );
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -1540,8 +1572,8 @@ function ReportsPro({ sales, products }) {
       <section className="office-section report-print-area">
         <div className="section-title report-actions">
           <div>
-            <p className="eyebrow">Laporan {getPeriodLabel(period)}</p>
-            <h2>Ringkasan penjualan</h2>
+            <p className="eyebrow">Jurnal {getPeriodLabel(period)}</p>
+            <h2>Pemasukan harian</h2>
             <small>{start.toLocaleDateString('id-ID')} - {end.toLocaleDateString('id-ID')}</small>
           </div>
           <div className="button-row">
@@ -1560,10 +1592,10 @@ function ReportsPro({ sales, products }) {
         </div>
 
         <div className="report-metrics">
-          <Metric icon={<WalletCards />} label="Total omzet" value={currency.format(total)} hint={`${filteredSales.length} transaksi`} />
-          <Metric icon={<ReceiptText />} label="Nominal bayar masuk" value={currency.format(cashIn)} hint="Sebelum kembalian" />
-          <Metric icon={<BarChart3 />} label="Total kembalian" value={currency.format(changeOut)} hint="Dikembalikan ke pembeli" />
-          <Metric icon={<WalletCards />} label="Netto kas" value={currency.format(cashIn - changeOut)} hint="Masuk ke kas" />
+          <Metric icon={<WalletCards />} label="Total pemasukan" value={currency.format(total)} hint={`${filteredSales.length} catatan`} />
+          <Metric icon={<ReceiptText />} label="Nominal tercatat" value={currency.format(cashIn)} hint="Disimpan ke buku kas" />
+          <Metric icon={<BarChart3 />} label="Total koreksi" value={currency.format(changeOut)} hint="Biasanya 0" />
+          <Metric icon={<WalletCards />} label="Netto kas" value={currency.format(netCash)} hint="Masuk ke saldo" />
         </div>
 
         <div className="report-chart no-print">
@@ -1588,32 +1620,13 @@ function ReportsPro({ sales, products }) {
             <div className="sales-row report-row" key={sale.id}>
               <span>
                 <strong>{sale.id}</strong>
-                <small>{sale.date} - {sale.cashier}</small>
+                <small>{sale.date} - {sale.cashier} - {getSaleCategoryLabel(sale.category)}</small>
               </span>
-              <span>{sale.items} item</span>
+              <span>{sale.memo || getSaleCategoryLabel(sale.category)}</span>
               <span>{sale.payment}</span>
               <span>{currency.format(sale.cashReceived || sale.total)}</span>
               <span>{currency.format(sale.change || 0)}</span>
-              <b>{currency.format(sale.total)}</b>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="office-section no-print">
-        <div className="section-title">
-          <h2>Stok menipis</h2>
-          <small>{lowStock.length} produk</small>
-        </div>
-        <div className="inventory-list compact">
-          {lowStock.length === 0 && <p className="empty">Semua stok masih aman.</p>}
-          {lowStock.map((product) => (
-            <div className="inventory-item" key={product.id}>
-              <ProductArt product={product} />
-              <span>
-                <strong>{product.name}</strong>
-                <small>Sisa stok {product.stock}</small>
-              </span>
+              <b>{currency.format((sale.cashReceived || sale.total) - (sale.change || 0))}</b>
             </div>
           ))}
         </div>
@@ -1622,7 +1635,7 @@ function ReportsPro({ sales, products }) {
   );
 }
 
-function Reports({ sales, products }) {
+function Reports({ sales }) {
   const byPayment = useMemo(() => {
     return sales.reduce((acc, sale) => {
       acc[sale.payment] = (acc[sale.payment] || 0) + sale.total;
@@ -1631,9 +1644,9 @@ function Reports({ sales, products }) {
   }, [sales]);
 
   const exportCsv = () => {
-    const rows = ['ID,Tanggal,Kasir,Item,Pembayaran,Nominal Bayar,Kembalian,Total'];
+    const rows = ['ID,Tanggal,Kasir,Kategori,Pembayaran,Nominal Masuk,Kembalian,Netto Kas'];
     sales.forEach((sale) =>
-      rows.push(`${sale.id},${sale.date},${sale.cashier},${sale.items},${sale.payment},${sale.cashReceived || sale.total},${sale.change || 0},${sale.total}`)
+      rows.push(`${sale.id},${sale.date},${sale.cashier},${getSaleCategoryLabel(sale.category)},${sale.payment},${sale.cashReceived || sale.total},${sale.change || 0},${sale.total - (sale.change || 0)}`)
     );
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -1648,7 +1661,7 @@ function Reports({ sales, products }) {
     <div className="reports-layout">
       <section className="office-section">
         <div className="section-title">
-          <h2>Ringkasan penjualan</h2>
+          <h2>Jurnal pemasukan</h2>
           <button className="secondary-button" onClick={exportCsv}><Download /> CSV</button>
         </div>
         <div className="payment-summary">
@@ -1664,32 +1677,15 @@ function Reports({ sales, products }) {
             <div className="sales-row" key={sale.id}>
               <span>
                 <strong>{sale.id}</strong>
-                <small>{sale.date} • {sale.cashier}</small>
+                <small>{sale.date} - {sale.cashier} - {getSaleCategoryLabel(sale.category)}</small>
               </span>
-              <span>{sale.items} item</span>
+              <span>{sale.memo || getSaleCategoryLabel(sale.category)}</span>
               <span>{sale.payment}</span>
               <span>{currency.format(sale.cashReceived || sale.total)}</span>
               <span>{currency.format(sale.change || 0)}</span>
-              <b>{currency.format(sale.total)}</b>
+              <b>{currency.format(sale.total - (sale.change || 0))}</b>
             </div>
           ))}
-        </div>
-      </section>
-
-      <section className="office-section">
-        <h2>Barang yang perlu dicek</h2>
-        <div className="inventory-list compact">
-          {products
-            .filter((product) => product.stock <= 15)
-            .map((product) => (
-              <div className="inventory-item" key={product.id}>
-                <ProductArt product={product} />
-                <span>
-                  <strong>{product.name}</strong>
-                  <small>Sisa stok {product.stock}</small>
-                </span>
-              </div>
-            ))}
         </div>
       </section>
     </div>
