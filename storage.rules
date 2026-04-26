@@ -2,11 +2,14 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // Product images - only authenticated users can read
+    // Only authenticated users can upload (with size and type restrictions)
     match /products/{fileName} {
       // Only authenticated users can read
       allow read: if request.auth != null;
       
-      // Only authenticated users can write, with size and type restrictions
+      // Only authenticated users can write
+      // With file size limit (3MB) and image type only
       allow write: if request.auth != null
         && request.resource.size < 3 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');

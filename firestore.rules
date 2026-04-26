@@ -2,40 +2,61 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to get user role
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get user role from Firestore
     function getUserRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
-
-    // Users collection - only admins can read/write
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+    
+    // Helper function to check if user is cashier
+    function isCashier() {
+      return isAuthenticated() && getUserRole() == 'cashier';
+    }
+    
+    // Users collection - only authenticated users can read their own data
+    // Only admins can read/write all users
     match /users/{userId} {
-      allow read: if request.auth.uid == userId || getUserRole() == 'admin';
-      allow write: if request.auth.uid == userId || getUserRole() == 'admin';
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
-
-    // Products - everyone can read, only admins can write
+    
+    // Products - all authenticated users can read
+    // Only admins can create, update, delete
     match /products/{productId} {
-      allow read: if request.auth != null;
-      allow create, update, delete: if request.auth != null && getUserRole() == 'admin';
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
     }
-
-    // Sales - everyone can read, admins and cashiers can create, only admins can update/delete
+    
+    // Sales - all authenticated users can read
+    // Admins and cashiers can create
+    // Only admins can update and delete
     match /sales/{saleId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && (getUserRole() == 'admin' || getUserRole() == 'cashier');
-      allow update, delete: if request.auth != null && getUserRole() == 'admin';
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() || isCashier();
+      allow update, delete: if isAdmin();
     }
-
+    
     // Settings - only admins can read/write
     match /settings/{settingId} {
-      allow read, write: if request.auth != null && getUserRole() == 'admin';
+      allow read, write: if isAdmin();
     }
-
-    // Audit logs - everyone can read their own, admins can read all
+    
+    // Audit logs - authenticated users can read their own logs
+    // Admins can read all logs
+    // All authenticated users can create logs
     match /auditLogs/{logId} {
-      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || getUserRole() == 'admin');
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && getUserRole() == 'admin';
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
     }
   }
 }
