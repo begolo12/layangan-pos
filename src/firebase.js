@@ -96,6 +96,10 @@ export async function removeProduct(productId) {
   await deleteDoc(doc(db, 'products', productId));
 }
 
+export async function removeSale(saleId) {
+  await deleteDoc(doc(db, 'sales', saleId));
+}
+
 export async function saveSale(sale) {
   await setDoc(doc(db, 'sales', sale.id), {
     ...sale,

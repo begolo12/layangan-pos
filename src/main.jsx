@@ -5,7 +5,9 @@ import {
   Boxes,
   ChevronLeft,
   CalendarDays,
+  ClipboardList,
   Download,
+  History,
   ImagePlus,
   KeyRound,
   LayoutDashboard,
@@ -17,6 +19,7 @@ import {
   Printer,
   ReceiptText,
   Search,
+  Settings,
   ShoppingCart,
   Sparkles,
   Trash2,
@@ -128,6 +131,16 @@ const users = [
   },
 ];
 
+const defaultHistory = [
+  {
+    id: 'H-1001',
+    time: '2026-04-26 09:00',
+    actor: 'Sistem',
+    action: 'Aplikasi dibuat',
+    detail: 'Data awal produk dan transaksi demo disiapkan.',
+  },
+];
+
 function toDate(dateText) {
   const date = new Date(`${dateText}T00:00:00`);
   return Number.isNaN(date.getTime()) ? new Date() : date;
@@ -174,6 +187,13 @@ function getPeriodLabel(period) {
   }[period];
 }
 
+function nowStamp() {
+  return new Date().toLocaleString('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
 function useLocalState(key, initialValue) {
   const [value, setValue] = useState(() => {
     try {
@@ -199,6 +219,8 @@ function App() {
   const [session, setSession] = useLocalState('pos-session', null);
   const [products, setProducts] = useLocalState('pos-products', seedProducts);
   const [sales, setSales] = useLocalState('pos-sales', demoSales);
+  const [appUsers, setAppUsers] = useLocalState('pos-users', users);
+  const [historyLog, setHistoryLog] = useLocalState('pos-history', defaultHistory);
   const [themeId, setThemeId] = useLocalState('pos-theme', 'senja');
   const [syncStatus, setSyncStatus] = useState('Menghubungkan Firebase...');
   const [firebaseApi, setFirebaseApi] = useState(null);
@@ -243,16 +265,34 @@ function App() {
     firebaseApi?.saveTheme(nextThemeId).catch(() => setSyncStatus('Tema tersimpan lokal, Firebase belum bisa diakses'));
   };
 
+  const addHistory = (action, detail, actor = session?.name || 'Sistem') => {
+    setHistoryLog((current) => [
+      {
+        id: `H-${Date.now().toString().slice(-6)}`,
+        time: nowStamp(),
+        actor,
+        action,
+        detail,
+      },
+      ...current,
+    ]);
+  };
+
   return (
     <main className={`app theme-${theme.id}`}>
       {!session ? (
-        <Login themeId={themeId} setThemeId={changeTheme} setSession={setSession} syncStatus={syncStatus} />
+        <Login users={appUsers} setSession={setSession} syncStatus={syncStatus} />
       ) : session.role === 'admin' ? (
         <BackOffice
           products={products}
           setProducts={setProducts}
           sales={sales}
+          setSales={setSales}
           setSession={setSession}
+          appUsers={appUsers}
+          setAppUsers={setAppUsers}
+          historyLog={historyLog}
+          addHistory={addHistory}
           themeId={themeId}
           setThemeId={changeTheme}
           syncStatus={syncStatus}
@@ -267,13 +307,14 @@ function App() {
           setSession={setSession}
           syncStatus={syncStatus}
           firebaseApi={firebaseApi}
+          addHistory={addHistory}
         />
       )}
     </main>
   );
 }
 
-function Login({ themeId, setThemeId, setSession, syncStatus }) {
+function Login({ users, setSession, syncStatus }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -365,7 +406,7 @@ function ProductArt({ product, large = false }) {
   );
 }
 
-function PosScreen({ products, setProducts, sales, setSales, setSession, syncStatus, firebaseApi }) {
+function PosScreen({ products, setProducts, sales, setSales, setSession, syncStatus, firebaseApi, addHistory }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
   const [cart, setCart] = useState({});
@@ -432,6 +473,7 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
     setCart({});
     setPaymentOpen(false);
     setCashReceived('');
+    addHistory?.('Transaksi baru', `${sale.id} dibuat dengan total ${currency.format(total)}.`);
   };
 
   return (
@@ -559,7 +601,19 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, syncSta
   );
 }
 
-function BackOffice({ products, setProducts, sales, setSession, syncStatus, firebaseApi }) {
+function BackOffice({
+  products,
+  setProducts,
+  sales,
+  setSales,
+  setSession,
+  appUsers,
+  setAppUsers,
+  historyLog,
+  addHistory,
+  syncStatus,
+  firebaseApi,
+}) {
   const [view, setView] = useState('dashboard');
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
   const lowStock = products.filter((product) => product.stock <= 10);
@@ -592,6 +646,15 @@ function BackOffice({ products, setProducts, sales, setSession, syncStatus, fire
           <button className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}>
             <BarChart3 /> Laporan
           </button>
+          <button className={view === 'transactions' ? 'active' : ''} onClick={() => setView('transactions')}>
+            <ClipboardList /> Transaksi
+          </button>
+          <button className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}>
+            <History /> History
+          </button>
+          <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>
+            <Settings /> Setting
+          </button>
         </nav>
         <button className="logout-button" onClick={() => setSession(null)}>
           <LogOut /> Keluar
@@ -605,13 +668,22 @@ function BackOffice({ products, setProducts, sales, setSession, syncStatus, fire
           </button>
           <div>
             <p className="eyebrow">Admin</p>
-            <h1>{view === 'dashboard' ? 'Dashboard' : view === 'products' ? 'Produk & Stok' : 'Laporan'}</h1>
+            <h1>{view === 'dashboard' ? 'Dashboard' : view === 'products' ? 'Produk & Stok' : view === 'reports' ? 'Laporan' : view === 'transactions' ? 'Transaksi' : view === 'history' ? 'History' : 'Setting'}</h1>
             <small className="sync-text">{syncStatus}</small>
           </div>
           <div className="user-chip">
             <UserRound size={18} /> Admin
           </div>
         </header>
+
+        <div className="admin-tabs">
+          <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
+          <button className={view === 'products' ? 'active' : ''} onClick={() => setView('products')}>Produk</button>
+          <button className={view === 'reports' ? 'active' : ''} onClick={() => setView('reports')}>Laporan</button>
+          <button className={view === 'transactions' ? 'active' : ''} onClick={() => setView('transactions')}>Transaksi</button>
+          <button className={view === 'history' ? 'active' : ''} onClick={() => setView('history')}>History</button>
+          <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Setting</button>
+        </div>
 
         {view === 'dashboard' && (
           <>
@@ -678,8 +750,11 @@ function BackOffice({ products, setProducts, sales, setSession, syncStatus, fire
           </>
         )}
 
-        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} />}
+        {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} />}
         {view === 'reports' && <ReportsPro sales={sales} products={products} />}
+        {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} />}
+        {view === 'history' && <HistoryPage historyLog={historyLog} />}
+        {view === 'settings' && <SettingsPage users={appUsers} setUsers={setAppUsers} addHistory={addHistory} />}
       </main>
     </section>
   );
@@ -696,9 +771,10 @@ function Metric({ icon, label, value, hint }) {
   );
 }
 
-function ProductManager({ products, setProducts, firebaseApi }) {
+function ProductManager({ products, setProducts, firebaseApi, addHistory }) {
   const emptyForm = { name: '', type: 'layang', price: '', stock: '', desc: '', image: '', color: '#0f766e' };
   const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState('');
   const [saving, setSaving] = useState(false);
 
   const submit = async (event) => {
@@ -707,13 +783,18 @@ function ProductManager({ products, setProducts, firebaseApi }) {
     setSaving(true);
     const product = {
         ...form,
-        id: `${form.type}-${Date.now()}`,
+        id: editingId || `${form.type}-${Date.now()}`,
         price: Number(form.price),
         stock: Number(form.stock || 0),
       };
-    setProducts([product, ...products]);
+    setProducts((current) => editingId
+      ? current.map((item) => (item.id === editingId ? product : item))
+      : [product, ...current]
+    );
     await firebaseApi?.saveProduct(product).catch(() => {});
+    addHistory?.(editingId ? 'Produk diedit' : 'Produk baru', `${product.name} ${editingId ? 'diperbarui' : 'ditambahkan'} dengan stok ${product.stock}.`);
     setForm(emptyForm);
+    setEditingId('');
     setSaving(false);
   };
 
@@ -735,14 +816,41 @@ function ProductManager({ products, setProducts, firebaseApi }) {
   };
 
   const deleteProduct = (id) => {
+    const deletedProduct = products.find((item) => item.id === id);
+    if (!window.confirm(`Hapus produk ${deletedProduct?.name || id}?`)) return;
     setProducts(products.filter((product) => product.id !== id));
     firebaseApi?.removeProduct(id).catch(() => {});
+    addHistory?.('Produk dihapus', `${deletedProduct?.name || id} dihapus dari daftar barang.`);
+  };
+
+  const editProduct = (product) => {
+    setEditingId(product.id);
+    setForm({
+      name: product.name,
+      type: product.type,
+      price: product.price,
+      stock: product.stock,
+      desc: product.desc || '',
+      image: product.image || '',
+      color: product.color || '#0f766e',
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId('');
+    setForm(emptyForm);
   };
 
   return (
     <div className="product-manager">
       <form className="product-form" onSubmit={submit}>
-        <h2>Tambah barang</h2>
+        <div className="section-title">
+          <div>
+            <p className="eyebrow">{editingId ? 'Edit produk' : 'Produk baru'}</p>
+            <h2>{editingId ? 'Ubah data barang' : 'Tambah barang'}</h2>
+          </div>
+          {editingId && <button className="secondary-button" type="button" onClick={cancelEdit}>Batal</button>}
+        </div>
         <div className="form-grid">
           <label>
             Nama barang
@@ -779,28 +887,233 @@ function ProductManager({ products, setProducts, firebaseApi }) {
         </label>
         {form.image && <img className="preview-image" src={form.image} alt="Preview produk" />}
         <button className="primary-button" type="submit" disabled={saving}>
-          <Plus /> Simpan barang
+          <Plus /> {editingId ? 'Update barang' : 'Simpan barang'}
         </button>
       </form>
 
       <section className="office-section">
-        <h2>Daftar barang</h2>
-        <div className="inventory-list">
+        <div className="section-title">
+          <div>
+            <p className="eyebrow">Inventori</p>
+            <h2>Daftar barang</h2>
+          </div>
+          <small>{products.length} produk</small>
+        </div>
+        <div className="product-stock-list">
           {products.map((product) => (
-            <div className="inventory-item" key={product.id}>
-              <ProductArt product={product} />
+            <div className="stock-card" key={product.id}>
+              <ProductArt product={product} large />
               <span>
                 <strong>{product.name}</strong>
                 <small>{product.type} • {currency.format(product.price)} • stok {product.stock}</small>
               </span>
-              <button className="icon-button danger" aria-label="Hapus produk" onClick={() => deleteProduct(product.id)}>
-                <Trash2 />
-              </button>
+              <b>{currency.format(product.price)}</b>
+              <em>Stok {product.stock}</em>
+              <div className="row-actions">
+                <button className="secondary-button" type="button" onClick={() => editProduct(product)}>Edit</button>
+                <button className="icon-button danger" aria-label="Hapus produk" onClick={() => deleteProduct(product.id)}>
+                  <Trash2 />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </section>
     </div>
+  );
+}
+
+function TransactionManager({ sales, setSales, firebaseApi, addHistory }) {
+  const emptyForm = { id: '', date: '', cashier: '', items: '', total: '', cashReceived: '', change: '' };
+  const [form, setForm] = useState(emptyForm);
+
+  const editSale = (sale) => {
+    setForm({
+      id: sale.id,
+      date: sale.date,
+      cashier: sale.cashier,
+      items: sale.items,
+      total: sale.total,
+      cashReceived: sale.cashReceived || sale.total,
+      change: sale.change || 0,
+    });
+  };
+
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    if (!form.id) return;
+    const updatedSale = {
+      ...sales.find((sale) => sale.id === form.id),
+      id: form.id,
+      date: form.date,
+      cashier: form.cashier || 'Admin',
+      items: Number(form.items || 0),
+      total: Number(form.total || 0),
+      payment: 'Tunai',
+      cashReceived: Number(form.cashReceived || form.total || 0),
+      change: Number(form.change || 0),
+    };
+    setSales((current) => current.map((sale) => (sale.id === form.id ? updatedSale : sale)));
+    await firebaseApi?.saveSale(updatedSale).catch(() => {});
+    addHistory?.('Transaksi diedit', `${updatedSale.id} diperbarui menjadi ${currency.format(updatedSale.total)}.`);
+    setForm(emptyForm);
+  };
+
+  const deleteSale = async (sale) => {
+    if (!window.confirm(`Hapus transaksi ${sale.id}?`)) return;
+    setSales((current) => current.filter((item) => item.id !== sale.id));
+    await firebaseApi?.removeSale?.(sale.id).catch(() => {});
+    addHistory?.('Transaksi dihapus', `${sale.id} dengan total ${currency.format(sale.total)} dihapus.`);
+  };
+
+  return (
+    <div className="transactions-layout">
+      <section className="office-section">
+        <div className="section-title">
+          <div>
+            <p className="eyebrow">Penyesuaian nota</p>
+            <h2>{form.id ? `Edit ${form.id}` : 'Pilih transaksi'}</h2>
+          </div>
+          {form.id && <button className="secondary-button" onClick={() => setForm(emptyForm)}>Batal</button>}
+        </div>
+        <form className="form-grid" onSubmit={saveEdit}>
+          <label>
+            Tanggal
+            <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} disabled={!form.id} />
+          </label>
+          <label>
+            Kasir
+            <input value={form.cashier} onChange={(event) => setForm({ ...form, cashier: event.target.value })} disabled={!form.id} />
+          </label>
+          <label>
+            Jumlah item
+            <input type="number" value={form.items} onChange={(event) => setForm({ ...form, items: event.target.value })} disabled={!form.id} />
+          </label>
+          <label>
+            Total
+            <input type="number" value={form.total} onChange={(event) => setForm({ ...form, total: event.target.value })} disabled={!form.id} />
+          </label>
+          <label>
+            Uang diterima
+            <input type="number" value={form.cashReceived} onChange={(event) => setForm({ ...form, cashReceived: event.target.value })} disabled={!form.id} />
+          </label>
+          <label>
+            Kembalian
+            <input type="number" value={form.change} onChange={(event) => setForm({ ...form, change: event.target.value })} disabled={!form.id} />
+          </label>
+          <button className="primary-button" type="submit" disabled={!form.id}>Simpan perubahan</button>
+        </form>
+      </section>
+
+      <section className="office-section">
+        <div className="section-title">
+          <div>
+            <p className="eyebrow">Daftar transaksi</p>
+            <h2>Semua nota</h2>
+          </div>
+          <small>{sales.length} transaksi</small>
+        </div>
+        <div className="sales-table">
+          {sales.map((sale) => (
+            <div className="sales-row transaction-row" key={sale.id}>
+              <span>
+                <strong>{sale.id}</strong>
+                <small>{sale.date} - {sale.cashier}</small>
+              </span>
+              <span>{sale.items} item</span>
+              <b>{currency.format(sale.total)}</b>
+              <div className="row-actions">
+                <button className="secondary-button" onClick={() => editSale(sale)}>Edit</button>
+                <button className="icon-button danger" aria-label="Hapus transaksi" onClick={() => deleteSale(sale)}>
+                  <Trash2 />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function HistoryPage({ historyLog }) {
+  return (
+    <section className="office-section">
+      <div className="section-title">
+        <div>
+          <p className="eyebrow">Audit aktivitas</p>
+          <h2>History aplikasi</h2>
+        </div>
+        <small>{historyLog.length} aktivitas</small>
+      </div>
+      <div className="history-list">
+        {historyLog.map((item) => (
+          <div className="history-item" key={item.id}>
+            <History />
+            <span>
+              <strong>{item.action}</strong>
+              <small>{item.detail}</small>
+              <em>{item.time} - {item.actor}</em>
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SettingsPage({ users, setUsers, addHistory }) {
+  const [forms, setForms] = useState(() =>
+    users.reduce((acc, user) => ({ ...acc, [user.username]: { password: user.password, confirm: user.password } }), {})
+  );
+  const [message, setMessage] = useState('');
+
+  const savePassword = (username) => {
+    const next = forms[username];
+    if (!next?.password || next.password !== next.confirm) {
+      setMessage('Password dan konfirmasi harus sama.');
+      return;
+    }
+    setUsers((current) => current.map((user) => (user.username === username ? { ...user, password: next.password } : user)));
+    addHistory?.('Password diubah', `Password akun ${username} diperbarui.`);
+    setMessage(`Password ${username} berhasil diperbarui.`);
+  };
+
+  return (
+    <section className="office-section">
+      <div className="section-title">
+        <div>
+          <p className="eyebrow">Akun aplikasi</p>
+          <h2>Setting password</h2>
+        </div>
+      </div>
+      {message && <p className="login-error">{message}</p>}
+      <div className="settings-grid">
+        {users.map((user) => (
+          <div className="settings-card" key={user.username}>
+            <strong>{user.title}</strong>
+            <small>Username: {user.username}</small>
+            <label>
+              Password baru
+              <input
+                type="password"
+                value={forms[user.username]?.password || ''}
+                onChange={(event) => setForms({ ...forms, [user.username]: { ...forms[user.username], password: event.target.value } })}
+              />
+            </label>
+            <label>
+              Konfirmasi
+              <input
+                type="password"
+                value={forms[user.username]?.confirm || ''}
+                onChange={(event) => setForms({ ...forms, [user.username]: { ...forms[user.username], confirm: event.target.value } })}
+              />
+            </label>
+            <button className="primary-button" onClick={() => savePassword(user.username)}>Simpan password</button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
