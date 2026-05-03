@@ -369,6 +369,7 @@ function App() {
           addHistory={addHistory}
           addToast={addToast}
           productTypes={productTypes}
+          confirm={confirm}
         />
       )}
     </main>
@@ -486,13 +487,16 @@ function ProductArt({ product, large = false }) {
   );
 }
 
-function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast, productTypes }) {
+function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast, productTypes, confirm }) {
   const [activeTab, setActiveTab] = useState('kasir');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
   const [saleCategory, setSaleCategory] = useState('layangan');
   const [cashReceived, setCashReceived] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  
+  const [editingSale, setEditingSale] = useState(null);
+  const [editForm, setEditForm] = useState({ category: '', total: '' });
   
   const todayStart = startOfDay(new Date());
   const todaySales = sales.filter((sale) => toDate(sale.date) >= todayStart);
@@ -547,6 +551,65 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
     }
   };
 
+  const handleEditClick = (sale) => {
+    setEditingSale(sale);
+    setEditForm({ category: sale.category, total: sale.total });
+  };
+
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    if (!editingSale) return;
+    
+    setCheckoutLoading(true);
+    try {
+      const updatedSale = {
+        ...editingSale,
+        category: editForm.category,
+        total: Number(editForm.total),
+        cashReceived: Number(editForm.total),
+        memo: getSaleCategoryLabel(editForm.category),
+      };
+      
+      setSales((current) => current.map((s) => (s.id === editingSale.id ? updatedSale : s)));
+      
+      if (firebaseApi) {
+        try {
+          await firebaseApi.saveSale(updatedSale);
+          addToast('Riwayat diperbarui', 'success');
+        } catch (error) {
+          addToast('Lokal diperbarui, gagal sinkronisasi Firebase', 'warning');
+        }
+      }
+      
+      addHistory?.('Riwayat diedit', `${updatedSale.id} diperbarui menjadi ${currency.format(updatedSale.total)}.`);
+      setEditingSale(null);
+    } catch (error) {
+      addToast('Gagal memperbarui riwayat', 'error');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
+  const deleteHistory = async () => {
+    if (!editingSale) return;
+    const ok = await confirm(`Yakin hapus transaksi ${editingSale.id}?`, 'Hapus Riwayat');
+    if (!ok) return;
+    
+    setSales((current) => current.filter((s) => s.id !== editingSale.id));
+    
+    if (firebaseApi) {
+      try {
+        await firebaseApi.removeSale?.(editingSale.id);
+        addToast('Riwayat dihapus', 'success');
+      } catch (error) {
+        addToast('Lokal dihapus, gagal sinkronisasi Firebase', 'warning');
+      }
+    }
+    
+    addHistory?.('Riwayat dihapus', `${editingSale.id} dihapus.`);
+    setEditingSale(null);
+  };
+
   return (
     <section className={`pos-layout mobile-view-${activeTab}`}>
       <header className="pos-header">
@@ -573,7 +636,7 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
             </div>
             <div className="sales-table compact-table" style={{ flex: 1, overflow: 'auto' }}>
               {todaySales.map((sale) => (
-                <div className="sales-row" key={sale.id}>
+                <div className="sales-row" key={sale.id} onClick={() => handleEditClick(sale)} style={{ cursor: 'pointer' }} title="Klik untuk edit">
                   <span>
                     <strong>{sale.id}</strong>
                     <small>{sale.date} - {getSaleCategoryLabel(sale.category)}</small>
@@ -651,6 +714,36 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
           <BarChart3 size={18} style={{ margin: '0 auto 4px', display: 'block' }} /> Laporan
         </button>
       </nav>
+
+      {editingSale && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setEditingSale(null)}>
+          <div className="payment-modal">
+            <div className="section-title">
+              <h2>Edit {editingSale.id}</h2>
+            </div>
+            <form className="form-grid" onSubmit={saveEdit} style={{ display: 'grid', gap: '12px' }}>
+              <label className="cash-input">
+                Kategori
+                <select value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} style={{ padding: '12px', borderRadius: '12px', border: '1px solid var(--line)' }}>
+                  {saleCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </label>
+              <label className="cash-input">
+                Total Nominal
+                <input type="number" value={editForm.total} onChange={(e) => setEditForm({ ...editForm, total: e.target.value })} autoFocus />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                <button type="button" className="secondary-button" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }} onClick={deleteHistory}>
+                  Hapus
+                </button>
+                <button type="submit" className="primary-button" disabled={checkoutLoading}>
+                  Simpan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
