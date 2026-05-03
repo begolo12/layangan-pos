@@ -207,7 +207,7 @@ function getPeriodLabel(period) {
 function nowStamp() {
   return new Date().toLocaleString('id-ID', {
     dateStyle: 'medium',
-    timeStyle: 'short',
+    timeStyle: 'medium',
   });
 }
 
@@ -498,8 +498,8 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
   const [editingSale, setEditingSale] = useState(null);
   const [editForm, setEditForm] = useState({ category: '', total: '' });
   
-  const todayStart = startOfDay(new Date());
-  const todaySales = sales.filter((sale) => toDate(sale.date) >= todayStart);
+  const localToday = new Date().toLocaleDateString('en-CA');
+  const todaySales = sales.filter((sale) => sale.date === localToday);
   const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
 
   const cashNumber = Number(cashReceived || 0);
@@ -520,7 +520,8 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
     try {
       const sale = {
         id: `S-${Date.now().toString().slice(-6)}`,
-        date: new Date().toISOString().slice(0, 10),
+        date: new Date().toLocaleDateString('en-CA'),
+        time: new Date().toLocaleTimeString('id-ID', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
         cashier: 'Kasir',
         total: cashNumber,
         items: 1,
@@ -639,7 +640,7 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
                 <div className="sales-row" key={sale.id} onClick={() => handleEditClick(sale)} style={{ cursor: 'pointer' }} title="Klik untuk edit">
                   <span>
                     <strong>{sale.id}</strong>
-                    <small>{sale.date} - {getSaleCategoryLabel(sale.category)}</small>
+                    <small>{sale.date}{sale.time ? ` | ${sale.time}` : ''} - {getSaleCategoryLabel(sale.category)}</small>
                   </span>
                   <span>{sale.payment}</span>
                   <b>{currency.format(sale.total)}</b>
@@ -1305,7 +1306,7 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
             <div className="sales-row transaction-row" key={sale.id}>
               <span>
                 <strong>{sale.id}</strong>
-                <small>{sale.date} - {sale.cashier} - {getSaleCategoryLabel(sale.category)}</small>
+                <small>{sale.date}{sale.time ? ` | ${sale.time}` : ''} - {sale.cashier} - {getSaleCategoryLabel(sale.category)}</small>
               </span>
               <span>{sale.memo || getSaleCategoryLabel(sale.category)}</span>
               <b>{currency.format(sale.total)}</b>
