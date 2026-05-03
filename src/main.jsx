@@ -487,11 +487,17 @@ function ProductArt({ product, large = false }) {
 }
 
 function PosScreen({ products, setProducts, sales, setSales, setSession, firebaseApi, addHistory, addToast, productTypes }) {
+  const [activeTab, setActiveTab] = useState('kasir');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('semua');
   const [saleCategory, setSaleCategory] = useState('layangan');
   const [cashReceived, setCashReceived] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  
+  const todayStart = startOfDay(new Date());
+  const todaySales = sales.filter((sale) => toDate(sale.date) >= todayStart);
+  const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
+
   const cashNumber = Number(cashReceived || 0);
   const canFinishPayment = cashNumber > 0;
 
@@ -542,7 +548,7 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
   };
 
   return (
-    <section className="pos-layout">
+    <section className={`pos-layout mobile-view-${activeTab}`}>
       <header className="pos-header">
         <div>
           <p className="eyebrow">Mode kasir</p>
@@ -554,6 +560,34 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
       </header>
 
       <div className="pos-content">
+        <main className="pos-main report-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="metric-grid" style={{ gridTemplateColumns: 'repeat(1, minmax(0, 1fr))', marginBottom: 0 }}>
+            <Metric icon={<WalletCards />} label="Pendapatan Hari Ini" value={currency.format(todayRevenue)} hint={`${todaySales.length} transaksi`} />
+          </div>
+        </main>
+
+        <main className="pos-main history-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <section className="office-section" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <div className="section-title" style={{ padding: '16px 16px 0' }}>
+              <h2>History Inputan</h2>
+            </div>
+            <div className="sales-table compact-table" style={{ flex: 1, overflow: 'auto' }}>
+              {todaySales.map((sale) => (
+                <div className="sales-row" key={sale.id}>
+                  <span>
+                    <strong>{sale.id}</strong>
+                    <small>{sale.date} - {getSaleCategoryLabel(sale.category)}</small>
+                  </span>
+                  <span>{sale.payment}</span>
+                  <b>{currency.format(sale.total)}</b>
+                </div>
+              ))}
+              {todaySales.length === 0 && (
+                <p className="empty" style={{ padding: '16px' }}>Belum ada inputan hari ini.</p>
+              )}
+            </div>
+          </section>
+        </main>
         <aside className="cart-panel">
           <div className="cart-title">
             <h2>Catat pemasukan</h2>
@@ -605,6 +639,18 @@ function PosScreen({ products, setProducts, sales, setSales, setSession, firebas
           </button>
         </aside>
       </div>
+
+      <nav className="pos-mobile-nav">
+        <button className={activeTab === 'kasir' ? 'active' : ''} onClick={() => setActiveTab('kasir')}>
+          <WalletCards size={18} style={{ margin: '0 auto 4px', display: 'block' }} /> Kasir
+        </button>
+        <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>
+          <History size={18} style={{ margin: '0 auto 4px', display: 'block' }} /> Riwayat
+        </button>
+        <button className={activeTab === 'laporan' ? 'active' : ''} onClick={() => setActiveTab('laporan')}>
+          <BarChart3 size={18} style={{ margin: '0 auto 4px', display: 'block' }} /> Laporan
+        </button>
+      </nav>
     </section>
   );
 }
