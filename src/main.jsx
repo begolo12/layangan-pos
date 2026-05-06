@@ -4,7 +4,6 @@ import {
   BarChart3,
   Boxes,
   ChevronLeft,
-  CalendarDays,
   ClipboardList,
   Download,
   History,
@@ -36,6 +35,9 @@ import { useToast, ToastContainer } from './hooks/useToast';
 import { useConfirmDialog, ConfirmDialog } from './hooks/useConfirmDialog';
 import { validators, sanitize } from './utils/validators';
 import { testFirebaseConnection } from './utils/firebaseTest';
+
+const APP_VERSION = '2026.04.30-2';
+const APP_UPDATE_NOTE = 'Backoffice dipercepat, laporan punya filter range/bulan/tahun, dan navigasi dibuat lebih user-friendly.';
 
 const currency = new Intl.NumberFormat('id-ID', {
   style: 'currency',
@@ -165,7 +167,106 @@ function startOfDay(date) {
   return next;
 }
 
-function getPeriodRange(period) {
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function endOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
+function endOfYear(date) {
+  return new Date(date.getFullYear(), 11, 31, 23, 59, 59, 999);
+}
+
+function formatDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getMonthLabel(month) {
+  return [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
+  ][month] || '';
+}
+
+function getReportYears(sales) {
+  const currentYear = new Date().getFullYear();
+  const years = new Set([currentYear]);
+
+  sales.forEach((sale) => {
+    const date = toDate(sale.date);
+    if (!Number.isNaN(date.getTime())) years.add(date.getFullYear());
+  });
+
+  return [...years].sort((a, b) => b - a);
+}
+
+function getReportFilterLabel(filter) {
+  if (filter.mode === 'range') {
+    return `${filter.start || '-'} sampai ${filter.end || '-'}`;
+  }
+
+  if (filter.mode === 'month') {
+    return `${getMonthLabel(Number(filter.month) - 1)} ${filter.year}`;
+  }
+
+  if (filter.mode === 'year') {
+    return `${filter.year}`;
+  }
+
+  return 'Semua data';
+}
+
+function filterSalesByReportFilter(sales, filter) {
+  if (filter.mode === 'range') {
+    if (!filter.start || !filter.end) return sales;
+    const start = startOfDay(toDate(filter.start));
+    const end = new Date(`${filter.end}T00:00:00`);
+    end.setHours(23, 59, 59, 999);
+    return sales.filter((sale) => {
+      const date = toDate(sale.date);
+      return date >= start && date <= end;
+    });
+  }
+
+  if (filter.mode === 'month') {
+    if (!filter.month || !filter.year) return sales;
+    const start = new Date(Number(filter.year), Number(filter.month) - 1, 1, 0, 0, 0, 0);
+    const end = endOfMonth(start);
+    return sales.filter((sale) => {
+      const date = toDate(sale.date);
+      return date >= start && date <= end;
+    });
+  }
+
+  if (filter.mode === 'year') {
+    if (!filter.year) return sales;
+    const start = new Date(Number(filter.year), 0, 1, 0, 0, 0, 0);
+    const end = endOfYear(start);
+    return sales.filter((sale) => {
+      const date = toDate(sale.date);
+      return date >= start && date <= end;
+    });
+  }
+
+  return sales;
+}
+
+function filterSalesByPeriod(sales, period) {
   const now = startOfDay(new Date());
   const start = new Date(now);
 
@@ -180,11 +281,6 @@ function getPeriodRange(period) {
 
   const end = new Date(now);
   end.setHours(23, 59, 59, 999);
-  return { start, end };
-}
-
-function filterSalesByPeriod(sales, period) {
-  const { start, end } = getPeriodRange(period);
   return sales.filter((sale) => {
     const date = toDate(sale.date);
     return date >= start && date <= end;
@@ -193,15 +289,6 @@ function filterSalesByPeriod(sales, period) {
 
 function isLowStock(product) {
   return Number(product.stock || 0) <= Number(product.minStock || 10);
-}
-
-function getPeriodLabel(period) {
-  return {
-    daily: 'Harian',
-    weekly: 'Mingguan',
-    monthly: 'Bulanan',
-    yearly: 'Tahunan',
-  }[period];
 }
 
 function nowStamp() {
@@ -223,6 +310,10 @@ const saleCategories = [
 
 function getSaleCategoryLabel(category) {
   return saleCategories.find((item) => item.id === category)?.name || 'Umum';
+}
+
+function normalizeText(value) {
+  return String(value || '').toLowerCase().trim();
 }
 
 function useLocalState(key, initialValue) {
@@ -263,6 +354,28 @@ function App() {
   useEffect(() => {
     if (themeId !== 'senja') setThemeId('senja');
   }, [themeId]);
+
+  useEffect(() => {
+    const historyVersionKey = 'pos-history-app-version';
+    try {
+      const lastLoggedVersion = localStorage.getItem(historyVersionKey);
+      if (lastLoggedVersion === APP_VERSION) return;
+
+      setHistoryLog((current) => [
+        {
+          id: `H-${Date.now().toString().slice(-6)}`,
+          time: nowStamp(),
+          actor: 'Sistem',
+          action: 'Aplikasi diperbarui',
+          detail: APP_UPDATE_NOTE,
+        },
+        ...current,
+      ]);
+      localStorage.setItem(historyVersionKey, APP_VERSION);
+    } catch {
+      // Ignore localStorage errors so the app still loads.
+    }
+  }, [setHistoryLog]);
 
   // Make test function available in console
   useEffect(() => {
@@ -767,6 +880,14 @@ function BackOffice({
   setProductTypes,
 }) {
   const [view, setView] = useState('dashboard');
+  const viewMeta = {
+    dashboard: 'Ringkasan cepat omzet, stok, dan transaksi terbaru.',
+    products: 'Kelola produk dengan formulir yang lebih mudah dipindai.',
+    reports: 'Filter penjualan berdasarkan rentang, bulan, atau tahun.',
+    transactions: 'Cari dan atur transaksi lebih cepat.',
+    history: 'Lihat aktivitas perubahan sistem.',
+    settings: 'Atur akun, tema, dan data aplikasi.',
+  };
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
   const lowStock = products.filter(isLowStock);
   const totalStock = products.reduce((sum, product) => sum + product.stock, 0);
@@ -821,6 +942,7 @@ function BackOffice({
           <div>
             <p className="eyebrow">Admin</p>
             <h1>{view === 'dashboard' ? 'Dashboard' : view === 'products' ? 'Produk & Stok' : view === 'reports' ? 'Laporan' : view === 'transactions' ? 'Transaksi' : view === 'history' ? 'History' : 'Setting'}</h1>
+            <small>{viewMeta[view]}</small>
           </div>
           <div className="user-chip">
             <UserRound size={18} /> Admin
@@ -843,6 +965,36 @@ function BackOffice({
               <Metric icon={<BarChart3 />} label="Omzet minggu ini" value={currency.format(weeklyRevenue)} hint={`${weeklySales.length} transaksi`} />
               <Metric icon={<ReceiptText />} label="Rata-rata nota" value={currency.format(averageSale)} hint="Semua transaksi" />
               <Metric icon={<PackagePlus />} label="Nilai stok" value={currency.format(stockValue)} hint={`${totalStock} barang tersedia`} />
+            </div>
+            <div className="quick-actions">
+              <button className="quick-action-card" onClick={() => setView('products')}>
+                <Boxes />
+                <span>
+                  <strong>Kelola Produk</strong>
+                  <small>Tambah, edit, dan cek stok yang menipis.</small>
+                </span>
+              </button>
+              <button className="quick-action-card" onClick={() => setView('reports')}>
+                <BarChart3 />
+                <span>
+                  <strong>Buka Laporan</strong>
+                  <small>Filter transaksi berdasarkan tanggal, bulan, atau tahun.</small>
+                </span>
+              </button>
+              <button className="quick-action-card" onClick={() => setView('transactions')}>
+                <ClipboardList />
+                <span>
+                  <strong>Transaksi</strong>
+                  <small>Cari nota lalu edit tanpa pindah banyak layar.</small>
+                </span>
+              </button>
+              <button className="quick-action-card" onClick={() => setView('settings')}>
+                <Settings />
+                <span>
+                  <strong>Pengaturan</strong>
+                  <small>Atur akun, tipe barang, dan reset data.</small>
+                </span>
+              </button>
             </div>
             <div className="dashboard-grid">
               <section className="office-section">
@@ -941,6 +1093,25 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
   const [editingId, setEditingId] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState('stock-low');
+
+  const filteredProducts = useMemo(() => {
+    const normalizedQuery = normalizeText(query);
+    const base = products.filter((product) => {
+      if (!normalizedQuery) return true;
+      return [product.name, product.type, product.desc].some((field) => normalizeText(field).includes(normalizedQuery));
+    });
+
+    return [...base].sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name, 'id');
+      if (sortBy === 'price') return Number(a.price || 0) - Number(b.price || 0);
+      if (sortBy === 'stock-high') return Number(b.stock || 0) - Number(a.stock || 0);
+      return Number(a.stock || 0) - Number(b.stock || 0);
+    });
+  }, [products, query, sortBy]);
+
+  const lowStockCount = useMemo(() => products.filter(isLowStock).length, [products]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -1083,13 +1254,19 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
 
   return (
     <div className="product-manager">
-      <form className="product-form" onSubmit={submit}>
+      <form className="product-form product-form-sticky" onSubmit={submit}>
         <div className="section-title">
           <div>
             <p className="eyebrow">{editingId ? 'Edit produk' : 'Produk baru'}</p>
             <h2>{editingId ? 'Ubah data barang' : 'Tambah barang'}</h2>
+            <small>Form di kiri, daftar di kanan. Alur ini lebih cepat untuk input dan cek stok.</small>
           </div>
           {editingId && <button className="secondary-button" type="button" onClick={cancelEdit}>Batal</button>}
+        </div>
+        <div className="compact-summary">
+          <span><strong>{products.length}</strong><small>Produk</small></span>
+          <span><strong>{lowStockCount}</strong><small>Perlu restock</small></span>
+          <span><strong>{productTypes.length}</strong><small>Tipe</small></span>
         </div>
         <div className="form-grid">
           <label>
@@ -1142,11 +1319,23 @@ function ProductManager({ products, setProducts, firebaseApi, addHistory, addToa
           <div>
             <p className="eyebrow">Inventori</p>
             <h2>Daftar barang</h2>
+            <small>Cari, urutkan, lalu edit data tanpa berpindah layar terlalu jauh.</small>
           </div>
-          <small>{products.length} produk</small>
+          <small>{filteredProducts.length} ditampilkan</small>
+        </div>
+        <div className="search-row toolbar-row">
+          <Search size={18} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari nama, tipe, atau catatan..." />
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            <option value="stock-low">Stok terendah</option>
+            <option value="stock-high">Stok tertinggi</option>
+            <option value="name">Nama A-Z</option>
+            <option value="price">Harga termurah</option>
+          </select>
         </div>
         <div className="product-stock-list">
-          {products.map((product) => (
+          {filteredProducts.length === 0 && <p className="empty">Tidak ada produk yang cocok dengan pencarian ini.</p>}
+          {filteredProducts.map((product) => (
             <div className={`stock-card ${isLowStock(product) ? 'low-stock' : ''}`} key={product.id}>
               <ProductArt product={product} large />
               <span>
@@ -1174,6 +1363,22 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
   const emptyForm = { id: '', date: '', cashier: '', category: 'layangan', items: '', total: '', cashReceived: '', change: '' };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const filteredSales = useMemo(() => {
+    const normalizedQuery = normalizeText(query);
+    return sales.filter((sale) => {
+      if (!normalizedQuery) return true;
+      return [
+        sale.id,
+        sale.date,
+        sale.cashier,
+        sale.memo,
+        getSaleCategoryLabel(sale.category),
+        sale.payment,
+      ].some((field) => normalizeText(field).includes(normalizedQuery));
+    });
+  }, [sales, query]);
 
   const editSale = (sale) => {
     setForm({
@@ -1253,9 +1458,16 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
           <div>
             <p className="eyebrow">Penyesuaian nota</p>
             <h2>{form.id ? `Edit ${form.id}` : 'Pilih transaksi'}</h2>
+            <small>{form.id ? 'Ubah detail transaksi tanpa keluar dari halaman ini.' : 'Klik salah satu nota di daftar untuk mulai edit.'}</small>
           </div>
           {form.id && <button className="secondary-button" onClick={() => setForm(emptyForm)}>Batal</button>}
         </div>
+        {!form.id && (
+          <div className="empty empty-note">
+            <strong>Belum ada transaksi dipilih.</strong>
+            <p>Pilih nota di daftar kanan supaya form ini terisi otomatis.</p>
+          </div>
+        )}
         <form className="form-grid" onSubmit={saveEdit}>
           <label>
             Tanggal
@@ -1298,11 +1510,17 @@ function TransactionManager({ sales, setSales, firebaseApi, addHistory, addToast
           <div>
             <p className="eyebrow">Daftar transaksi</p>
             <h2>Semua nota</h2>
+            <small>Gunakan pencarian untuk menemukan nota dengan cepat.</small>
           </div>
-          <small>{sales.length} transaksi</small>
+          <small>{filteredSales.length} ditampilkan</small>
+        </div>
+        <div className="search-row toolbar-row">
+          <Search size={18} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari ID, kasir, kategori, atau tanggal..." />
         </div>
         <div className="sales-table">
-          {sales.map((sale) => (
+          {filteredSales.length === 0 && <p className="empty">Tidak ada transaksi yang cocok.</p>}
+          {filteredSales.map((sale) => (
             <div className="sales-row transaction-row" key={sale.id}>
               <span>
                 <strong>{sale.id}</strong>
@@ -1676,19 +1894,40 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
 }
 
 function ReportsPro({ sales, products }) {
-  const [period, setPeriod] = useState('daily');
-  const filteredSales = useMemo(() => filterSalesByPeriod(sales, period), [sales, period]);
+  const availableYears = useMemo(() => getReportYears(sales), [sales]);
+  const currentDate = new Date();
+  const [filterMode, setFilterMode] = useState('range');
+  const [rangeStart, setRangeStart] = useState(() => formatDateInputValue(startOfMonth(currentDate)));
+  const [rangeEnd, setRangeEnd] = useState(() => formatDateInputValue(currentDate));
+  const [selectedMonth, setSelectedMonth] = useState(String(currentDate.getMonth() + 1).padStart(2, '0'));
+  const [selectedYear, setSelectedYear] = useState(String(currentDate.getFullYear()));
+
+  useEffect(() => {
+    if (filterMode === 'range' && rangeStart && rangeEnd && rangeStart > rangeEnd) {
+      setRangeEnd(rangeStart);
+    }
+  }, [filterMode, rangeStart, rangeEnd]);
+
+  const activeFilter = useMemo(() => ({
+    mode: filterMode,
+    start: rangeStart,
+    end: rangeEnd,
+    month: selectedMonth,
+    year: selectedYear,
+  }), [filterMode, rangeStart, rangeEnd, selectedMonth, selectedYear]);
+
+  const filteredSales = useMemo(() => filterSalesByReportFilter(sales, activeFilter), [sales, activeFilter]);
   const total = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const cashIn = filteredSales.reduce((sum, sale) => sum + (sale.cashReceived || sale.total), 0);
   const changeOut = filteredSales.reduce((sum, sale) => sum + (sale.change || 0), 0);
   const netCash = cashIn - changeOut;
-  const { start, end } = getPeriodRange(period);
+  const filterLabel = getReportFilterLabel(activeFilter);
   const chartRows = useMemo(() => {
     const grouped = filteredSales.reduce((acc, sale) => {
       acc[sale.date] = (acc[sale.date] || 0) + sale.total;
       return acc;
     }, {});
-    const rows = Object.entries(grouped).slice(-7);
+    const rows = Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).slice(-7);
     const max = Math.max(...rows.map(([, value]) => value), 1);
     return rows.map(([date, value]) => ({ date, value, width: `${Math.max(8, (value / max) * 100)}%` }));
   }, [filteredSales]);
@@ -1702,33 +1941,104 @@ function ReportsPro({ sales, products }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `laporan-${period}.csv`;
+    link.download = `laporan-${filterMode}-${filterLabel.replace(/\s+/g, '-').toLowerCase()}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const resetFilter = () => {
+    setFilterMode('range');
+    setRangeStart(formatDateInputValue(startOfMonth(currentDate)));
+    setRangeEnd(formatDateInputValue(currentDate));
+    setSelectedMonth(String(currentDate.getMonth() + 1).padStart(2, '0'));
+    setSelectedYear(String(currentDate.getFullYear()));
   };
 
   return (
     <div className="reports-layout">
       <section className="office-section report-print-area">
-        <div className="section-title report-actions">
-          <div>
-            <p className="eyebrow">Jurnal {getPeriodLabel(period)}</p>
-            <h2>Pemasukan harian</h2>
-            <small>{start.toLocaleDateString('id-ID')} - {end.toLocaleDateString('id-ID')}</small>
+        <div className="report-header">
+          <div className="section-title report-actions">
+            <div>
+              <p className="eyebrow">Jurnal penjualan</p>
+              <h2>Data penjualan yang lebih mudah dibaca</h2>
+              <small>{filterLabel}</small>
+            </div>
+            <div className="button-row">
+              <button className="secondary-button no-print" onClick={exportCsv}><Download /> CSV</button>
+              <button className="primary-button no-print" onClick={() => window.print()}><Printer /> Print PDF</button>
+            </div>
           </div>
-          <div className="button-row">
-            <button className="secondary-button no-print" onClick={exportCsv}><Download /> CSV</button>
-            <button className="primary-button no-print" onClick={() => window.print()}><Printer /> Print PDF</button>
+          <div className="report-subtitle">
+            <span>{filteredSales.length} transaksi tampil</span>
+            <span>Filter aktif: {filterMode === 'range' ? 'Rentang tanggal' : filterMode === 'month' ? 'Bulan' : filterMode === 'year' ? 'Tahun' : 'Semua data'}</span>
           </div>
         </div>
 
-        <div className="period-tabs no-print">
-          {['daily', 'weekly', 'monthly', 'yearly'].map((item) => (
-            <button className={period === item ? 'active' : ''} onClick={() => setPeriod(item)} key={item}>
-              <CalendarDays />
-              {getPeriodLabel(item)}
-            </button>
-          ))}
+        <div className="report-filter-card no-print">
+          <div className="filter-mode-tabs">
+            <button className={filterMode === 'range' ? 'active' : ''} onClick={() => setFilterMode('range')}>Rentang</button>
+            <button className={filterMode === 'month' ? 'active' : ''} onClick={() => setFilterMode('month')}>Bulan</button>
+            <button className={filterMode === 'year' ? 'active' : ''} onClick={() => setFilterMode('year')}>Tahun</button>
+            <button className={filterMode === 'all' ? 'active' : ''} onClick={() => setFilterMode('all')}>Semua</button>
+          </div>
+
+          {filterMode === 'range' && (
+            <div className="filter-grid">
+              <label>
+                Tanggal awal
+                <input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} />
+              </label>
+              <label>
+                Tanggal akhir
+                <input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} min={rangeStart} />
+              </label>
+            </div>
+          )}
+
+          {filterMode === 'month' && (
+            <div className="filter-grid filter-grid-month">
+              <label>
+                Bulan
+                <select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
+                  {Array.from({ length: 12 }, (_, index) => {
+                    const monthValue = String(index + 1).padStart(2, '0');
+                    return (
+                      <option value={monthValue} key={monthValue}>
+                        {getMonthLabel(index)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <label>
+                Tahun
+                <select value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}>
+                  {availableYears.map((year) => (
+                    <option value={String(year)} key={year}>{year}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          {filterMode === 'year' && (
+            <div className="filter-grid filter-grid-year">
+              <label>
+                Tahun
+                <select value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}>
+                  {availableYears.map((year) => (
+                    <option value={String(year)} key={year}>{year}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          <div className="filter-footer">
+            <small>Gunakan rentang tanggal untuk melihat periode spesifik. Bulan dan tahun cocok untuk rekap lebih cepat.</small>
+            <button className="secondary-button" onClick={resetFilter}>Reset filter</button>
+          </div>
         </div>
 
         <div className="report-metrics">
@@ -1755,7 +2065,7 @@ function ReportsPro({ sales, products }) {
         </div>
 
         <div className="sales-table">
-          {filteredSales.length === 0 && <p className="empty">Belum ada transaksi pada periode ini.</p>}
+          {filteredSales.length === 0 && <p className="empty">Belum ada transaksi pada filter ini.</p>}
           {filteredSales.map((sale) => (
             <div className="sales-row report-row" key={sale.id}>
               <span>
