@@ -345,6 +345,7 @@ function App() {
   const [historyLog, setHistoryLog] = useLocalState('pos-history', defaultHistory);
   const [themeId, setThemeId] = useLocalState('pos-theme', 'senja');
   const [productTypes, setProductTypes] = useLocalState('pos-product-types', defaultProductTypes);
+  const [deposits, setDeposits] = useLocalState('pos-deposits', []);
   const [syncStatus, setSyncStatus] = useState('Menghubungkan Firebase...');
   const [firebaseApi, setFirebaseApi] = useState(null);
   const { toasts, addToast, removeToast } = useToast();
@@ -470,6 +471,8 @@ function App() {
           confirm={confirm}
           productTypes={productTypes}
           setProductTypes={setProductTypes}
+          deposits={deposits}
+          setDeposits={setDeposits}
         />
       ) : (
         <PosScreen
@@ -878,6 +881,8 @@ function BackOffice({
   confirm,
   productTypes,
   setProductTypes,
+  deposits,
+  setDeposits,
 }) {
   const [view, setView] = useState('dashboard');
   const viewMeta = {
@@ -1054,7 +1059,7 @@ function BackOffice({
         )}
 
         {view === 'products' && <ProductManager products={products} setProducts={setProducts} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} confirm={confirm} productTypes={productTypes} />}
-        {view === 'reports' && <ReportsPro sales={sales} products={products} />}
+        {view === 'reports' && <ReportsPro sales={sales} products={products} deposits={deposits} setDeposits={setDeposits} />}
         {view === 'transactions' && <TransactionManager sales={sales} setSales={setSales} firebaseApi={firebaseApi} addHistory={addHistory} addToast={addToast} confirm={confirm} />}
         {view === 'history' && <HistoryPage historyLog={historyLog} />}
         {view === 'settings' && (
@@ -1893,7 +1898,7 @@ function SettingsPage({ users: authUsers, setUsers, setProducts, setSales, setHi
   );
 }
 
-function ReportsPro({ sales, products }) {
+function ReportsPro({ sales, products, deposits = [], setDeposits }) {
   const availableYears = useMemo(() => getReportYears(sales), [sales]);
   const currentDate = new Date();
   const [filterMode, setFilterMode] = useState('range');
@@ -1901,6 +1906,8 @@ function ReportsPro({ sales, products }) {
   const [rangeEnd, setRangeEnd] = useState(() => formatDateInputValue(currentDate));
   const [selectedMonth, setSelectedMonth] = useState(String(currentDate.getMonth() + 1).padStart(2, '0'));
   const [selectedYear, setSelectedYear] = useState(String(currentDate.getFullYear()));
+  const [depositAmount, setDepositAmount] = useState('');
+  const [showDepositInput, setShowDepositInput] = useState(false);
 
   useEffect(() => {
     if (filterMode === 'range' && rangeStart && rangeEnd && rangeStart > rangeEnd) {
@@ -1920,6 +1927,17 @@ function ReportsPro({ sales, products }) {
   const total = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const cashIn = filteredSales.reduce((sum, sale) => sum + (sale.cashReceived || sale.total), 0);
   const changeOut = filteredSales.reduce((sum, sale) => sum + (sale.change || 0), 0);
+  
+  // Get deposit for current filter
+  const filterKey = `${activeFilter.mode}-${activeFilter.start}-${activeFilter.end}-${activeFilter.month}-${activeFilter.year}`;
+  const currentDeposit = useMemo(() => {
+    const found = deposits.find(d => d.id === filterKey);
+    return found ? found.amount : 0;
+  }, [deposits, filterKey]);
+  
+  const depositValue = currentDeposit;
+  const deviation = depositValue - total;
+  
   const netCash = cashIn - changeOut;
   const filterLabel = getReportFilterLabel(activeFilter);
   const chartRows = useMemo(() => {
@@ -2041,11 +2059,67 @@ function ReportsPro({ sales, products }) {
           </div>
         </div>
 
+        <div className="report-filter-card no-print" style={{ marginTop: '1rem' }}>
+          <div className="section-title">
+            <h3>Input Setoran</h3>
+            <small>Masukkan jumlah setoran untuk periode ini</small>
+          </div>
+          <div className="filter-grid">
+            <label>
+              Jumlah Setoran
+              <input 
+                type="number" 
+                value={depositAmount} 
+                onChange={(e) => setDepositAmount(e.target.value)}
+                placeholder="Masukkan jumlah setoran"
+                min="0"
+              />
+            </label>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem' }}>
+              <button 
+                className="primary-button" 
+                onClick={() => {
+                  const amount = parseFloat(depositAmount) || 0;
+                  const newDeposit = {
+                    id: filterKey,
+                    date: new Date().toISOString(),
+                    amount: amount,
+                    note: filterLabel
+                  };
+                  setDeposits(prev => {
+                    const filtered = prev.filter(d => d.id !== filterKey);
+                    return [...filtered, newDeposit];
+                  });
+                  setDepositAmount('');
+                }}
+                disabled={!depositAmount || parseFloat(depositAmount) < 0}
+              >
+                Simpan Setoran
+              </button>
+              {currentDeposit > 0 && (
+                <button 
+                  className="secondary-button" 
+                  onClick={() => {
+                    setDeposits(prev => prev.filter(d => d.id !== filterKey));
+                  }}
+                >
+                  Hapus
+                </button>
+              )}
+            </div>
+          </div>
+          {currentDeposit > 0 && (
+            <small style={{ color: 'var(--success)', marginTop: '0.5rem', display: 'block' }}>
+              Setoran saat ini: {currency.format(currentDeposit)}
+            </small>
+          )}
+        </div>
+
         <div className="report-metrics">
           <Metric icon={<WalletCards />} label="Total pemasukan" value={currency.format(total)} hint={`${filteredSales.length} catatan`} />
           <Metric icon={<ReceiptText />} label="Nominal tercatat" value={currency.format(cashIn)} hint="Disimpan ke buku kas" />
-          <Metric icon={<BarChart3 />} label="Total koreksi" value={currency.format(changeOut)} hint="Biasanya 0" />
-          <Metric icon={<WalletCards />} label="Netto kas" value={currency.format(netCash)} hint="Masuk ke saldo" />
+          <Metric icon={<BarChart3 />} label="Setoran" value={currency.format(depositValue)} hint="Input manual setoran" />
+          <Metric icon={<WalletCards />} label="Deviasi" value={currency.format(deviation)} hint="Setoran - Total pemasukan" />
         </div>
 
         <div className="report-chart no-print">

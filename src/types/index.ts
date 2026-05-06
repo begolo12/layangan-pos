@@ -52,6 +52,13 @@ export interface ProductType {
   color: string;
 }
 
+export interface Deposit {
+  id: string;
+  date: string;
+  amount: number;
+  note?: string;
+}
+
 export interface Toast {
   id: string;
   message: string;
